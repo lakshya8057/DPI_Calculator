@@ -318,3 +318,78 @@ def test_docx_api_endpoints_analyze_and_extract():
         assert any(n.endswith("manifest.csv") for n in namelist)
         assert any(n.endswith("report.txt") for n in namelist)
         assert any("Fig_1.1__" in n for n in namelist)
+
+
+def test_docx_page_number_tracking():
+    """Verify that images across hard page breaks, soft breaks, and section breaks have accurate page numbers."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from app import app
+    from fastapi.testclient import TestClient
+
+    doc = docx.Document()
+
+    # Page 1: Figure 1.1
+    p1 = doc.add_paragraph()
+    p1.add_run().add_picture(io.BytesIO(create_solid_image(100, 100, (255, 0, 0))))
+    doc.add_paragraph("Figure 1.1: Image on page 1")
+
+    # Hard page break
+    doc.add_page_break()
+
+    # Page 2: Figure 1.2
+    p2 = doc.add_paragraph()
+    p2.add_run().add_picture(io.BytesIO(create_solid_image(100, 100, (0, 255, 0))))
+    doc.add_paragraph("Figure 1.2: Image on page 2")
+
+    # Soft page break (w:lastRenderedPageBreak)
+    p3 = doc.add_paragraph()
+    run = p3.add_run()
+    soft_break = OxmlElement("w:lastRenderedPageBreak")
+    run._r.append(soft_break)
+
+    # Page 3: Figure 1.3
+    p4 = doc.add_paragraph()
+    p4.add_run().add_picture(io.BytesIO(create_solid_image(100, 100, (0, 0, 255))))
+    doc.add_paragraph("Figure 1.3: Image on page 3")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    docx_bytes = buf.getvalue()
+
+    # 1. Check parse_docx_figures result
+    res = parse_docx_figures(docx_bytes)
+    figs = res.parts[1]
+    assert len(figs) == 3
+    assert figs[0].figure_number == "1.1"
+    assert figs[0].page_number == 1
+    assert figs[1].figure_number == "1.2"
+    assert figs[1].page_number == 2
+    assert figs[2].figure_number == "1.3"
+    assert figs[2].page_number == 3
+
+    # 2. Check build_extracted_figures_zip manifest.csv
+    zip_bytes, _ = build_extracted_figures_zip(docx_bytes)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+        manifest_text = z.read("extracted_figures/manifest.csv").decode("utf-8-sig")
+        assert "page_number" in manifest_text
+        lines = manifest_text.strip().split("\r\n")
+        header = lines[0].split(",")
+        page_idx = header.index("page_number")
+        assert lines[1].split(",")[page_idx] == "1"
+        assert lines[2].split(",")[page_idx] == "2"
+        assert lines[3].split(",")[page_idx] == "3"
+
+    # 3. Check /api/docx/analyze API endpoint
+    client = TestClient(app)
+    resp = client.post(
+        "/api/docx/analyze",
+        files={"file": ("pages_test.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={"caption_position": "auto"},
+    )
+    assert resp.status_code == 200
+    api_figs = resp.json()["parts"]["1"]
+    assert api_figs[0]["page_number"] == 1
+    assert api_figs[1]["page_number"] == 2
+    assert api_figs[2]["page_number"] == 3
+

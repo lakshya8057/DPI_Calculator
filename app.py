@@ -570,6 +570,7 @@ async def docx_analyze_endpoint(
                             "sequence": f.sequence,
                             "part": f.part,
                             "figure_number": f.figure_number,
+                            "page_number": f.page_number,
                             "caption_text": f.caption_text,
                             "media_filename": f.image.media_filename,
                             "original_media_file": f.image.media_path,
@@ -609,6 +610,7 @@ async def docx_analyze_endpoint(
                 unmatched_list.append(
                     {
                         "doc_index": u.doc_index,
+                        "page_number": u.page_number,
                         "media_filename": u.media_filename,
                         "original_media_file": u.media_path,
                         "output_path": f"_unmatched/Unmatched_{u.doc_index:03d}__{u.media_filename}",

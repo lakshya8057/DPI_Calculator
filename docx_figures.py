@@ -58,6 +58,7 @@ class DocxImage:
     is_cropped: bool
     location: str  # "body", "table", "textbox", "header", "footnote"
     paragraph_idx: int
+    page_number: int = 1
     sha256: str = ""
     pixel_width: Optional[int] = None
     pixel_height: Optional[int] = None
@@ -88,6 +89,7 @@ class MatchedFigure:
     caption_text: str
     image: DocxImage
     output_path: str
+    page_number: int = 1
     warnings: List[str] = field(default_factory=list)
     print_status: str = "OK"
     effective_dpi: Optional[int] = None
@@ -273,13 +275,15 @@ def find_images_in_element(
     location: str,
     p_idx: int,
     start_doc_index: int,
+    page_number: int = 1,
 ) -> List[DocxImage]:
     """Locate all images within a container element, ignoring mc:Fallback."""
     images: List[DocxImage] = []
     curr_idx = start_doc_index
 
     # 1. DrawingML images (w:drawing)
-    for drawing in elem.xpath(".//w:drawing", namespaces=NAMESPACES):
+    drawings = [elem] if etree.QName(elem).localname == "drawing" else elem.xpath(".//w:drawing", namespaces=NAMESPACES)
+    for drawing in drawings:
         # Ignore drawings inside mc:Fallback
         if drawing.xpath("ancestor::mc:Fallback", namespaces=NAMESPACES):
             continue
@@ -331,6 +335,7 @@ def find_images_in_element(
                     crop_info=crop_info,
                     location=location,
                     paragraph_idx=p_idx,
+                    page_number=page_number,
                     sha256=sha256,
                     pixel_width=pix_w,
                     pixel_height=pix_h,
@@ -341,7 +346,8 @@ def find_images_in_element(
             curr_idx += 1
 
     # 2. Legacy VML images (w:pict)
-    for pict in elem.xpath(".//w:pict", namespaces=NAMESPACES):
+    picts = [elem] if etree.QName(elem).localname == "pict" else elem.xpath(".//w:pict", namespaces=NAMESPACES)
+    for pict in picts:
         if pict.xpath("ancestor::mc:Fallback", namespaces=NAMESPACES):
             continue
 
@@ -385,6 +391,7 @@ def find_images_in_element(
                     crop_info=None,
                     location=location,
                     paragraph_idx=p_idx,
+                    page_number=page_number,
                     sha256=sha256,
                     pixel_width=pix_w,
                     pixel_height=pix_h,
@@ -420,6 +427,7 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
     all_captions: List[DocxCaption] = []
 
     doc_image_counter = 1
+    current_page = 1
 
     for p_idx, p in enumerate(root.xpath("//w:p", namespaces=NAMESPACES)):
         in_tbl = bool(p.xpath("ancestor::w:tbl", namespaces=NAMESPACES))
@@ -447,10 +455,53 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
                 )
                 all_captions.append(caption_obj)
 
-        p_images = find_images_in_element(
-            p, doc_rels, zip_file, location, p_idx, doc_image_counter
-        )
-        doc_image_counter += len(p_images)
+        # Check paragraph-level pageBreakBefore
+        pbb = p.xpath("./w:pPr/w:pageBreakBefore", namespaces=NAMESPACES)
+        if pbb:
+            val = pbb[0].get(f"{{{NAMESPACES['w']}}}val") or pbb[0].get("val")
+            if val not in ("0", "false"):
+                current_page += 1
+
+        # Walk descendant nodes in document order to capture page breaks and drawings accurately
+        p_images: List[DocxImage] = []
+        for node in p.iter():
+            # If node belongs to an inner paragraph (e.g. textbox inside this paragraph),
+            # skip it here so it's handled when that inner paragraph is processed
+            closest_p = node.xpath("ancestor::w:p[1]", namespaces=NAMESPACES)
+            if closest_p and closest_p[0] != p:
+                continue
+
+            tag = etree.QName(node).localname
+            if tag == "lastRenderedPageBreak":
+                current_page += 1
+            elif tag == "br":
+                br_type = node.get(f"{{{NAMESPACES['w']}}}type") or node.get("type")
+                if br_type == "page":
+                    current_page += 1
+            elif tag == "drawing":
+                if node.xpath("ancestor::mc:Fallback", namespaces=NAMESPACES):
+                    continue
+                imgs = find_images_in_element(
+                    node, doc_rels, zip_file, location, p_idx, doc_image_counter, page_number=current_page
+                )
+                doc_image_counter += len(imgs)
+                p_images.extend(imgs)
+            elif tag == "pict":
+                if node.xpath("ancestor::mc:Fallback", namespaces=NAMESPACES):
+                    continue
+                imgs = find_images_in_element(
+                    node, doc_rels, zip_file, location, p_idx, doc_image_counter, page_number=current_page
+                )
+                doc_image_counter += len(imgs)
+                p_images.extend(imgs)
+
+        # Check section break at paragraph level (takes effect after paragraph)
+        sectPr = p.xpath("./w:pPr/w:sectPr", namespaces=NAMESPACES)
+        if sectPr:
+            sect_type = sectPr[0].xpath("./w:type/@w:val", namespaces=NAMESPACES)
+            if not (sect_type and sect_type[0] == "continuous"):
+                current_page += 1
+
         all_images.extend(p_images)
 
         paragraph_records.append(
@@ -574,6 +625,7 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
                         caption_text=best_caption.full_text,
                         image=img,
                         output_path="",
+                        page_number=img.page_number,
                         warnings=warnings,
                         print_status=status,
                         effective_dpi=img.effective_dpi,
@@ -651,6 +703,7 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
                 "sequence": f.sequence,
                 "part": f.part,
                 "figure_number": f.figure_number,
+                "page_number": f.page_number,
                 "caption_text": f.caption_text,
                 "original_media_file": f.image.media_path,
                 "output_path": f.output_path,
@@ -677,6 +730,7 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
                 "sequence": f"U{idx:03d}",
                 "part": "-",
                 "figure_number": "-",
+                "page_number": un_img.page_number,
                 "caption_text": "",
                 "original_media_file": un_img.media_path,
                 "output_path": un_path,
@@ -725,7 +779,7 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
     if unmatched_images:
         for u in unmatched_images:
             report_lines.append(
-                f"- {u.media_filename} (Doc Index {u.doc_index}, Placed width: {u.placed_width_in} in) -> saved to _unmatched/"
+                f"- {u.media_filename} (Doc Index {u.doc_index}, Page {u.page_number}, Placed width: {u.placed_width_in} in) -> saved to _unmatched/"
             )
     else:
         report_lines.append("All images were successfully matched to captions.")
@@ -742,7 +796,7 @@ def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -
     for f in ordered_matched:
         if f.warnings:
             warning_count += 1
-            report_lines.append(f"- Fig {f.figure_number} ({f.image.media_filename}): {', '.join(f.warnings)}")
+            report_lines.append(f"- Fig {f.figure_number} (Page {f.page_number}, {f.image.media_filename}): {', '.join(f.warnings)}")
     if warning_count == 0:
         report_lines.append("No warnings.")
 
@@ -822,6 +876,7 @@ def build_extracted_figures_zip(
                 "sequence",
                 "part",
                 "figure_number",
+                "page_number",
                 "caption_text",
                 "original_media_file",
                 "output_path",

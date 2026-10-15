@@ -1694,6 +1694,7 @@
             <tr>
               <td class="thumb-cell">${thumbHtml}</td>
               <td style="font-weight: 700; color: var(--text-main); white-space: nowrap;">Fig ${f.figure_number}</td>
+              <td style="white-space: nowrap; font-weight: 600; color: var(--text-muted);">Page ${f.page_number || 1}</td>
               <td class="caption-cell" title="${escapeHtml(f.caption_text)}">${escapeHtml(f.caption_text || "-")}</td>
               <td style="white-space: nowrap;">${f.placed_width_in}"</td>
               <td style="white-space: nowrap;">${f.pixels_str}</td>
@@ -1730,6 +1731,7 @@
                 <tr>
                   <th class="thumb-cell">Image</th>
                   <th>Fig #</th>
+                  <th>Page</th>
                   <th>Caption</th>
                   <th>Placed</th>
                   <th>Pixels</th>
@@ -1740,7 +1742,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${rowsHtml || '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 16px;">No figures match current filters.</td></tr>'}
+                ${rowsHtml || '<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 16px;">No figures match current filters.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -1773,6 +1775,7 @@
               <tr>
                 <td class="thumb-cell">${thumbHtml}</td>
                 <td style="font-weight: 600; color: var(--text-muted);">Doc #${u.doc_index}</td>
+                <td style="white-space: nowrap; font-weight: 600; color: var(--text-muted);">Page ${u.page_number || 1}</td>
                 <td style="color: var(--text-light); font-style: italic;">(No caption matched)</td>
                 <td>${u.placed_width_in}"</td>
                 <td>${u.pixels_str}</td>
@@ -1809,6 +1812,7 @@
                   <tr>
                     <th class="thumb-cell">Image</th>
                     <th>Doc #</th>
+                    <th>Page</th>
                     <th>Caption</th>
                     <th>Placed</th>
                     <th>Pixels</th>
