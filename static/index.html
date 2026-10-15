@@ -1066,6 +1066,22 @@
               Only with warnings
             </label>
           </div>
+          <div class="filter-item" style="margin-left: auto;">
+            <label style="margin-bottom: 0;">Enhance Target:</label>
+            <input type="number" id="docxTargetDpi" value="300" style="width: 65px; padding: 4px 6px; font-size: 0.82rem;" min="72" max="1200">
+            <span style="font-size: 0.78rem; color: var(--text-muted);">DPI</span>
+          </div>
+          <div class="filter-item">
+            <select id="docxMethodSelect" style="width: auto; padding: 4px 8px; font-size: 0.82rem;">
+              <option value="lanczos">Lanczos + Sharpen</option>
+              <option value="realesrgan" id="optDocxRealEsrgan" style="display: none;">Real-ESRGAN (AI)</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <button class="btn btn-secondary btn-sm" id="docxEnhanceAllBtn" style="white-space: nowrap;" onclick="enhanceAllLowDpiFigures()">
+              Enhance All (&lt;300 DPI)
+            </button>
+          </div>
         </div>
 
         <!-- Grouped Parts Tables -->
@@ -1088,7 +1104,7 @@
           </button>
         </div>
         <p class="note-text" style="text-align: center; margin-top: 8px;">
-          * Files are the untouched originals from the .docx archive. No recompression, resizing, or quality loss.
+          * Unenhanced files retain untouched original bytes from the .docx archive. Enhanced figures are stored as pristine 300 DPI PNGs.
         </p>
 
         <!-- Report Box -->
@@ -1110,6 +1126,7 @@
     // DOCX State
     let currentDocxFile = null;
     let currentDocxData = null;
+    const enhancedDocxImages = new Map(); // media_path -> { blob, url, width, height, dpi, upscaleFactor }
 
     // Initial check for Real-ESRGAN capabilities
     async function checkCapabilities() {
@@ -1120,6 +1137,8 @@
           if (cap.realesrgan_available) {
             const opt = document.getElementById("optRealEsrgan");
             if (opt) opt.style.display = "block";
+            const optDocx = document.getElementById("optDocxRealEsrgan");
+            if (optDocx) optDocx.style.display = "block";
           }
         }
       } catch (e) {
@@ -1577,6 +1596,8 @@
       }
 
       currentDocxFile = file;
+      enhancedDocxImages.clear();
+      updateDocxDownloadBtn();
       document.getElementById("selectedDocxNameDisplay").innerHTML = `
         <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">${file.name}</span>
         <span style="font-size: 0.78rem; color: var(--text-muted);">(${(file.size / (1024 * 1024)).toFixed(1)} MB)</span>
@@ -1681,6 +1702,17 @@
 
         let rowsHtml = "";
         figs.forEach(f => {
+          const isEnhanced = f.is_enhanced || enhancedDocxImages.has(f.original_media_file);
+          if (isEnhanced) {
+            const enhInfo = enhancedDocxImages.get(f.original_media_file);
+            if (enhInfo) {
+              f.pixels_str = `${enhInfo.width}x${enhInfo.height}`;
+              f.effective_dpi = enhInfo.dpi;
+              f.print_status = "OK";
+              f.thumbnail = enhInfo.url;
+            }
+          }
+
           const badgeClass = f.print_status === "OK" || f.print_status.includes("Vector") ? "green" : (f.print_status.includes("Re-export") ? "amber" : "red");
           const thumbHtml = f.thumbnail 
             ? `<img src="${f.thumbnail}" class="thumb-img" alt="Thumb">` 
@@ -1689,6 +1721,10 @@
           const warnText = f.warnings.length > 0 
             ? `<span style="color: var(--amber); font-size: 0.76rem;" title="${f.warnings.join('; ')}">⚠️ ${f.warnings.join('; ')}</span>` 
             : `<span style="color: var(--text-light);">-</span>`;
+
+          const enhanceBtnHtml = isEnhanced
+            ? `<button class="btn btn-sm" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-weight:600;" title="Enhanced to ${f.effective_dpi} DPI (click to re-enhance)" data-media-path="${escapeHtml(f.original_media_file)}" onclick='enhanceDocxFigure("${escapeHtml(f.original_media_file)}", ${f.placed_width_in || 4.88})'>✓ Enhanced</button>`
+            : `<button class="btn ${f.effective_dpi && f.effective_dpi < 300 ? 'btn-primary' : 'btn-secondary'} btn-sm" title="Enhance directly in this tab" data-media-path="${escapeHtml(f.original_media_file)}" onclick='enhanceDocxFigure("${escapeHtml(f.original_media_file)}", ${f.placed_width_in || 4.88})'>Enhance</button>`;
 
           rowsHtml += `
             <tr>
@@ -1703,7 +1739,7 @@
               <td>${warnText}</td>
               <td>
                 <div style="display: flex; gap: 6px; align-items: center;">
-                  <button class="btn btn-secondary btn-sm" title="Download original figure file" onclick='downloadSingleFigure(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
+                  <button class="btn btn-secondary btn-sm" title="${isEnhanced ? 'Download enhanced figure' : 'Download original figure file'}" onclick='downloadSingleFigure(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/>
@@ -1711,9 +1747,7 @@
                     </svg>
                     Download
                   </button>
-                  <button class="btn btn-secondary btn-sm" title="Send to Enhancer tab" onclick='sendFigureToEnhancer(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
-                    Enhance
-                  </button>
+                  ${enhanceBtnHtml}
                 </div>
               </td>
             </tr>
@@ -1766,10 +1800,25 @@
 
           let unRowsHtml = "";
           unfigs.forEach(u => {
+            const isEnhanced = u.is_enhanced || enhancedDocxImages.has(u.original_media_file);
+            if (isEnhanced) {
+              const enhInfo = enhancedDocxImages.get(u.original_media_file);
+              if (enhInfo) {
+                u.pixels_str = `${enhInfo.width}x${enhInfo.height}`;
+                u.effective_dpi = enhInfo.dpi;
+                u.print_status = "OK";
+                u.thumbnail = enhInfo.url;
+              }
+            }
+
             const badgeClass = u.print_status === "OK" || u.print_status.includes("Vector") ? "green" : (u.print_status.includes("Re-export") ? "amber" : "red");
             const thumbHtml = u.thumbnail 
               ? `<img src="${u.thumbnail}" class="thumb-img" alt="Thumb">` 
               : `<span style="font-size: 0.72rem; color: var(--text-light);">${u.extension}</span>`;
+
+            const enhanceBtnHtml = isEnhanced
+              ? `<button class="btn btn-sm" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-weight:600;" title="Enhanced to ${u.effective_dpi} DPI (click to re-enhance)" data-media-path="${escapeHtml(u.original_media_file)}" onclick='enhanceDocxFigure("${escapeHtml(u.original_media_file)}", ${u.placed_width_in || 4.88})'>✓ Enhanced</button>`
+              : `<button class="btn ${u.effective_dpi && u.effective_dpi < 300 ? 'btn-primary' : 'btn-secondary'} btn-sm" title="Enhance directly in this tab" data-media-path="${escapeHtml(u.original_media_file)}" onclick='enhanceDocxFigure("${escapeHtml(u.original_media_file)}", ${u.placed_width_in || 4.88})'>Enhance</button>`;
 
             unRowsHtml += `
               <tr>
@@ -1784,7 +1833,7 @@
                 <td><span style="color: var(--text-muted); font-size: 0.76rem;">Saved to _unmatched/</span></td>
                 <td>
                   <div style="display: flex; gap: 6px; align-items: center;">
-                    <button class="btn btn-secondary btn-sm" title="Download original image file" onclick='downloadSingleFigure(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
+                    <button class="btn btn-secondary btn-sm" title="${isEnhanced ? 'Download enhanced image' : 'Download original image file'}" onclick='downloadSingleFigure(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                         <polyline points="7 10 12 15 17 10"/>
@@ -1792,9 +1841,7 @@
                       </svg>
                       Download
                     </button>
-                    <button class="btn btn-secondary btn-sm" title="Send to Enhancer tab" onclick='sendFigureToEnhancer(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
-                      Enhance
-                    </button>
+                    ${enhanceBtnHtml}
                   </div>
                 </td>
               </tr>
@@ -1867,12 +1914,30 @@
       const captionPos = document.getElementById("docxCaptionPosSelect").value;
 
       btn.disabled = true;
-      btnText.textContent = "Building ZIP (storing untouched bytes)...";
+      const count = enhancedDocxImages.size;
+      btnText.textContent = count > 0 
+        ? `Building ZIP (${count} enhanced included)...` 
+        : "Building ZIP (storing untouched bytes)...";
       spinner.style.display = "block";
 
       const formData = new FormData();
       formData.append("file", currentDocxFile);
       formData.append("caption_position", captionPos);
+
+      // Pass any in-place enhanced files and metadata
+      if (count > 0) {
+        const metaList = [];
+        for (const [mediaPath, info] of enhancedDocxImages.entries()) {
+          formData.append("enhanced_files", info.blob, mediaPath);
+          metaList.push({
+            media_path: mediaPath,
+            pixel_width: info.width,
+            pixel_height: info.height,
+            effective_dpi: info.dpi,
+          });
+        }
+        formData.append("enhanced_meta", JSON.stringify(metaList));
+      }
 
       try {
         const resp = await fetch("/api/docx/extract", { method: "POST", body: formData });
@@ -1897,7 +1962,7 @@
         alert("Extraction failed due to network or server error.");
       } finally {
         btn.disabled = false;
-        btnText.textContent = "Download original images (ZIP)";
+        updateDocxDownloadBtn();
         spinner.style.display = "none";
       }
     }
@@ -1905,9 +1970,29 @@
     async function downloadSingleFigure(figureItem) {
       if (!currentDocxFile) return;
 
+      const mediaPath = figureItem.original_media_file;
+
+      // If this figure was enhanced in-place, download the enhanced blob directly!
+      if (enhancedDocxImages.has(mediaPath)) {
+        const info = enhancedDocxImages.get(mediaPath);
+        const url = URL.createObjectURL(info.blob);
+        const a = document.createElement("a");
+        a.href = url;
+        let outFilename = figureItem.output_path 
+          ? figureItem.output_path.split("/").pop() 
+          : figureItem.media_filename;
+        const stem = outFilename.replace(/\.[^/.]+$/, "");
+        a.download = `${stem}_${info.dpi}dpi.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
       const formData = new FormData();
       formData.append("file", currentDocxFile);
-      formData.append("media_path", figureItem.original_media_file);
+      formData.append("media_path", mediaPath);
 
       try {
         const resp = await fetch("/api/docx/extract-single", { method: "POST", body: formData });
@@ -1921,7 +2006,6 @@
         const a = document.createElement("a");
         a.href = url;
 
-        // Choose standardized filename: e.g. "Fig_1.1__image37.png" or "Unmatched_001__image12.png"
         let outFilename = figureItem.output_path 
           ? figureItem.output_path.split("/").pop() 
           : figureItem.media_filename;
@@ -1937,36 +2021,154 @@
       }
     }
 
-    async function sendFigureToEnhancer(figureItem) {
+    async function enhanceDocxFigure(mediaPath, placedWidth) {
       if (!currentDocxFile) return;
 
-      // Extract the single media file from the docx via backend
+      const targetDpi = parseInt(document.getElementById("docxTargetDpi")?.value) || 300;
+      const method = document.getElementById("docxMethodSelect")?.value || "lanczos";
+
+      // Show spinner on corresponding button
+      const btns = document.querySelectorAll(`button[data-media-path="${CSS.escape(mediaPath)}"]`);
+      btns.forEach(b => {
+        b.disabled = true;
+        b.innerHTML = `<span class="spinner" style="display:inline-block; width:10px; height:10px; border-width:2px; margin-right:4px; vertical-align:middle;"></span>Enhancing...`;
+      });
+
       const formData = new FormData();
       formData.append("file", currentDocxFile);
-      formData.append("media_path", figureItem.original_media_file);
+      formData.append("media_path", mediaPath);
+      formData.append("placed_width_in", placedWidth);
+      formData.append("target_dpi", targetDpi);
+      formData.append("method", method);
 
       try {
-        const resp = await fetch("/api/docx/extract-single", { method: "POST", body: formData });
+        const resp = await fetch("/api/docx/enhance-figure", { method: "POST", body: formData });
         if (!resp.ok) {
-          alert("Could not load image from DOCX.");
+          const err = await resp.json().catch(() => ({ detail: "Enhancement failed" }));
+          alert(`Enhancement error: ${err.detail}`);
+          renderDocxTables();
           return;
         }
 
         const blob = await resp.blob();
-        const file = new File([blob], figureItem.media_filename, { type: blob.type });
+        const newWidth = parseInt(resp.headers.get("X-Enhanced-Width")) || 0;
+        const newHeight = parseInt(resp.headers.get("X-Enhanced-Height")) || 0;
+        const newDpi = parseInt(resp.headers.get("X-Effective-DPI")) || targetDpi;
+        const upscaleFactor = resp.headers.get("X-Upscale-Factor") || "1.0";
+        const newThumbUrl = URL.createObjectURL(blob);
 
-        // Set placed width from the docx
-        const placedWidthVal = figureItem.placed_width_in || 4.88;
-        setPlacedWidth(placedWidthVal);
+        enhancedDocxImages.set(mediaPath, {
+          blob: blob,
+          url: newThumbUrl,
+          width: newWidth,
+          height: newHeight,
+          dpi: newDpi,
+          upscaleFactor: upscaleFactor,
+        });
 
-        // Preload file into Single Image tab
-        await handleFileSelect(file);
+        // Update in-memory currentDocxData
+        let found = false;
+        if (currentDocxData.parts) {
+          for (const pk in currentDocxData.parts) {
+            for (const item of currentDocxData.parts[pk]) {
+              if (item.original_media_file === mediaPath) {
+                item.pixel_width = newWidth;
+                item.pixel_height = newHeight;
+                item.pixels_str = `${newWidth}x${newHeight}`;
+                item.effective_dpi = newDpi;
+                item.print_status = "OK";
+                item.thumbnail = newThumbUrl;
+                item.is_enhanced = true;
+                if (!item.warnings) item.warnings = [];
+                item.warnings = item.warnings.filter(w => !w.toLowerCase().includes("re-export") && !w.toLowerCase().includes("soft"));
+                item.warnings.push(`Enhanced to ${newDpi} DPI (${upscaleFactor}×)`);
+                found = true;
+                break;
+              }
+            }
+            if (found) break;
+          }
+        }
+        if (!found && currentDocxData.unmatched) {
+          for (const item of currentDocxData.unmatched) {
+            if (item.original_media_file === mediaPath) {
+              item.pixel_width = newWidth;
+              item.pixel_height = newHeight;
+              item.pixels_str = `${newWidth}x${newHeight}`;
+              item.effective_dpi = newDpi;
+              item.print_status = "OK";
+              item.thumbnail = newThumbUrl;
+              item.is_enhanced = true;
+              if (!item.warnings) item.warnings = [];
+              item.warnings = item.warnings.filter(w => !w.toLowerCase().includes("re-export") && !w.toLowerCase().includes("soft"));
+              item.warnings.push(`Enhanced to ${newDpi} DPI (${upscaleFactor}×)`);
+              break;
+            }
+          }
+        }
 
-        // Switch to Single Image tab
-        switchTab("single");
+        renderDocxTables();
+        updateDocxDownloadBtn();
       } catch (err) {
-        console.error("Send to enhancer error:", err);
-        alert("Failed to send figure to Enhancer.");
+        console.error("In-place enhance error:", err);
+        alert("Enhancement failed due to server or network error.");
+        renderDocxTables();
+      }
+    }
+
+    async function enhanceAllLowDpiFigures() {
+      if (!currentDocxData || !currentDocxFile) return;
+
+      const toEnhance = [];
+      if (currentDocxData.parts) {
+        for (const pk in currentDocxData.parts) {
+          for (const fig of currentDocxData.parts[pk]) {
+            if (fig.effective_dpi && fig.effective_dpi < 300 && !enhancedDocxImages.has(fig.original_media_file) && !fig.pixels_str.includes("Vector")) {
+              toEnhance.push(fig);
+            }
+          }
+        }
+      }
+      if (currentDocxData.unmatched) {
+        for (const un of currentDocxData.unmatched) {
+          if (un.effective_dpi && un.effective_dpi < 300 && !enhancedDocxImages.has(un.original_media_file) && !un.pixels_str.includes("Vector")) {
+            toEnhance.push(un);
+          }
+        }
+      }
+
+      if (toEnhance.length === 0) {
+        alert("All figures are already at or above 300 DPI!");
+        return;
+      }
+
+      const allBtn = document.getElementById("docxEnhanceAllBtn");
+      if (allBtn) {
+        allBtn.disabled = true;
+      }
+
+      for (let i = 0; i < toEnhance.length; i++) {
+        const item = toEnhance[i];
+        if (allBtn) {
+          allBtn.textContent = `Enhancing ${i + 1}/${toEnhance.length}...`;
+        }
+        await enhanceDocxFigure(item.original_media_file, item.placed_width_in || 4.88);
+      }
+
+      if (allBtn) {
+        allBtn.disabled = false;
+        allBtn.textContent = "Enhance All (<300 DPI)";
+      }
+    }
+
+    function updateDocxDownloadBtn() {
+      const btnText = document.getElementById("docxDownloadBtnText");
+      if (!btnText) return;
+      const count = enhancedDocxImages.size;
+      if (count > 0) {
+        btnText.textContent = `Download ZIP (${count} enhanced included)`;
+      } else {
+        btnText.textContent = "Download original images (ZIP)";
       }
     }
 

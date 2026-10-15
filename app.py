@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import csv
 import io
+import json
 import math
 import os
 import shutil
@@ -673,8 +674,10 @@ async def docx_analyze_endpoint(
 async def docx_extract_endpoint(
     file: UploadFile = File(...),
     caption_position: str = Form("auto"),
+    enhanced_files: list[UploadFile] = File(default=[]),
+    enhanced_meta: Optional[str] = Form(None),
 ):
-    """Extract all figures into an uncompressed ZIP with original byte fidelity."""
+    """Extract figures into an uncompressed ZIP, using enhanced bytes for any enhanced images."""
     if not (file.filename or "").lower().endswith(".docx"):
         raise HTTPException(status_code=400, detail="Uploaded file must be a .docx archive.")
 
@@ -695,10 +698,33 @@ async def docx_extract_endpoint(
         tmp.flush()
         tmp.close()
 
+        # Read any enhanced files sent from the frontend
+        enhanced_images: dict[str, bytes] = {}
+        for ef in enhanced_files:
+            if ef.filename:
+                content = await ef.read()
+                if content:
+                    enhanced_images[ef.filename] = content
+
+        meta_dict: dict[str, dict] = {}
+        if enhanced_meta:
+            try:
+                parsed = json.loads(enhanced_meta)
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        if "media_path" in item:
+                            meta_dict[item["media_path"]] = item
+                elif isinstance(parsed, dict):
+                    meta_dict = parsed
+            except Exception:
+                pass
+
         zip_bytes, _ = build_extracted_figures_zip(
             tmp_path,
             caption_position=caption_position,
             root_folder_name=f"{stem}_figures",
+            enhanced_images=enhanced_images,
+            enhanced_meta=meta_dict,
         )
 
         headers = {
@@ -709,6 +735,77 @@ async def docx_extract_endpoint(
             media_type="application/zip",
             headers=headers,
         )
+    finally:
+        try:
+            tmp.close()
+        except Exception:
+            pass
+        if os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
+@app.post("/api/docx/enhance-figure")
+async def docx_enhance_figure_endpoint(
+    file: UploadFile = File(...),
+    media_path: str = Form(...),
+    placed_width_in: float = Form(4.88),
+    target_dpi: int = Form(300),
+    method: str = Form("lanczos"),
+    output_format: str = Form("png"),
+):
+    """Extract and enhance a single figure image directly from DOCX in place."""
+    if not (file.filename or "").lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be a .docx archive.")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    tmp_path = tmp.name
+    try:
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+        tmp.flush()
+        tmp.close()
+
+        with zipfile.ZipFile(tmp_path, "r") as docx_zip:
+            if media_path not in docx_zip.namelist():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Media entry '{media_path}' not found in docx.",
+                )
+            raw_bytes = docx_zip.read(media_path)
+
+        ext = os.path.splitext(media_path)[1].lower()
+        if ext in (".emf", ".wmf", ".svg"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vector format '{ext}' is resolution-independent and cannot be raster-enhanced.",
+            )
+
+        out_bytes, meta = process_image(
+            image_bytes=raw_bytes,
+            placed_width_in=placed_width_in,
+            target_dpi=target_dpi,
+            method=method,
+            output_format=output_format,
+        )
+
+        stem = os.path.splitext(os.path.basename(media_path))[0]
+        download_filename = f"{stem}_{target_dpi}dpi.png"
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{download_filename}"',
+            "X-Enhanced-Width": str(meta["width"]),
+            "X-Enhanced-Height": str(meta["height"]),
+            "X-Effective-DPI": str(meta["effective_dpi"]),
+            "X-Upscale-Factor": str(meta["upscale_factor"]),
+            "X-Original-Media-Path": media_path,
+        }
+        if meta.get("warning"):
+            headers["X-Warning"] = meta["warning"]
+
+        return Response(content=out_bytes, media_type="image/png", headers=headers)
     finally:
         try:
             tmp.close()

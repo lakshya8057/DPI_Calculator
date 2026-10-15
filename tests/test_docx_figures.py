@@ -393,3 +393,125 @@ def test_docx_page_number_tracking():
     assert api_figs[1]["page_number"] == 2
     assert api_figs[2]["page_number"] == 3
 
+
+def test_docx_enhance_figure_direct_and_zip_inclusion():
+    """Verify that figures enhanced directly in DOCX tab are included in the downloaded ZIP
+
+    with updated DPI, pixels, and OK status, while untouched images preserve original bytes.
+    """
+    import json
+    from app import app
+    from fastapi.testclient import TestClient
+
+    doc = docx.Document()
+
+    # Image 1: 100x100 at 4.88" -> effective DPI = 20 (low DPI)
+    p1 = doc.add_paragraph()
+    p1.add_run().add_picture(io.BytesIO(create_solid_image(100, 100, (200, 50, 50))), width=Inches(4.88))
+    doc.add_paragraph("Figure 1.1: Low resolution diagram")
+
+    # Image 2: 1500x1500 at 4.88" -> effective DPI = 307 (high DPI, OK)
+    p2 = doc.add_paragraph()
+    p2.add_run().add_picture(io.BytesIO(create_solid_image(1500, 1500, (50, 200, 50))), width=Inches(4.88))
+    doc.add_paragraph("Figure 1.2: High resolution chart")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    docx_bytes = buf.getvalue()
+
+    client = TestClient(app)
+
+    # 1. Analyze DOCX
+    resp_an = client.post(
+        "/api/docx/analyze",
+        files={"file": ("test_doc.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={"caption_position": "auto"},
+    )
+    assert resp_an.status_code == 200
+    figs = resp_an.json()["parts"]["1"]
+    fig1 = figs[0]
+    assert fig1["figure_number"] == "1.1"
+    assert fig1["effective_dpi"] < 300
+    assert fig1["print_status"] == "Will print soft"
+
+    fig2 = figs[1]
+    assert fig2["figure_number"] == "1.2"
+    assert fig2["effective_dpi"] >= 300
+    assert fig2["print_status"] == "OK"
+
+    # 2. Call /api/docx/enhance-figure directly for Figure 1.1
+    resp_enh = client.post(
+        "/api/docx/enhance-figure",
+        files={"file": ("test_doc.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={
+            "media_path": fig1["original_media_file"],
+            "placed_width_in": fig1["placed_width_in"],
+            "target_dpi": 300,
+            "method": "lanczos",
+        },
+    )
+    assert resp_enh.status_code == 200
+    assert resp_enh.headers["X-Effective-DPI"] == "300"
+    enhanced_bytes = resp_enh.content
+    enhanced_w = int(resp_enh.headers["X-Enhanced-Width"])
+    enhanced_h = int(resp_enh.headers["X-Enhanced-Height"])
+    assert enhanced_w >= 1464
+
+    # 3. Request ZIP from /api/docx/extract with enhanced_files attached
+    meta_json = json.dumps([{
+        "media_path": fig1["original_media_file"],
+        "pixel_width": enhanced_w,
+        "pixel_height": enhanced_h,
+        "effective_dpi": 300,
+    }])
+
+    resp_zip = client.post(
+        "/api/docx/extract",
+        files=[
+            ("file", ("test_doc.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+            ("enhanced_files", (fig1["original_media_file"], enhanced_bytes, "image/png")),
+        ],
+        data={
+            "caption_position": "auto",
+            "enhanced_meta": meta_json,
+        },
+    )
+    assert resp_zip.status_code == 200
+
+    # 4. Inspect the generated ZIP:
+    with zipfile.ZipFile(io.BytesIO(resp_zip.content)) as out_zip:
+        # Figure 1.1 must contain the enhanced image bytes!
+        fig1_entry = [n for n in out_zip.namelist() if "Fig_1.1__" in n][0]
+        fig1_zip_bytes = out_zip.read(fig1_entry)
+        assert fig1_zip_bytes == enhanced_bytes
+        assert hashlib.sha256(fig1_zip_bytes).hexdigest() == hashlib.sha256(enhanced_bytes).hexdigest()
+
+        # Figure 1.2 (unenhanced) must contain the exact original bytes from the docx!
+        with zipfile.ZipFile(io.BytesIO(docx_bytes)) as in_zip:
+            orig_fig2_bytes = in_zip.read(fig2["original_media_file"])
+
+        fig2_entry = [n for n in out_zip.namelist() if "Fig_1.2__" in n][0]
+        fig2_zip_bytes = out_zip.read(fig2_entry)
+        assert fig2_zip_bytes == orig_fig2_bytes
+        assert hashlib.sha256(fig2_zip_bytes).hexdigest() == hashlib.sha256(orig_fig2_bytes).hexdigest()
+
+        # Check manifest.csv:
+        # Fig 1.1 row must show 300 DPI, OK status, and enhanced dimensions!
+        manifest_csv = out_zip.read("test_doc_figures/manifest.csv").decode("utf-8-sig")
+        lines = manifest_csv.strip().split("\r\n")
+        header = lines[0].split(",")
+        dpi_idx = header.index("effective_dpi")
+        status_idx = header.index("print_status")
+        width_idx = header.index("pixel_width")
+
+        row1 = lines[1].split(",")
+        assert row1[dpi_idx] == "300"
+        assert row1[status_idx] == "OK"
+        assert int(row1[width_idx]) == enhanced_w
+
+        # Check report.txt mentions enhanced figures:
+        report_txt = out_zip.read("test_doc_figures/report.txt").decode("utf-8")
+        assert "ENHANCED FIGURES IN THIS ARCHIVE" in report_txt
+        assert "Fig 1.1" in report_txt
+
+

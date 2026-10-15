@@ -850,25 +850,102 @@ def build_extracted_figures_zip(
     docx_file_or_bytes: Any,
     caption_position: str = "auto",
     root_folder_name: str = "extracted_figures",
+    enhanced_images: Optional[Dict[str, bytes]] = None,
+    enhanced_meta: Optional[Dict[str, dict]] = None,
 ) -> Tuple[bytes, ParseResult]:
-    """Extract figures with original byte preservation and build an uncompressed ZIP."""
+    """Extract figures with original byte preservation (or enhanced bytes if provided) and build an uncompressed ZIP."""
     result = parse_docx_figures(docx_file_or_bytes, caption_position=caption_position)
+    enhanced_images = enhanced_images or {}
+    enhanced_meta = enhanced_meta or {}
 
     def _build(docx_zip: zipfile.ZipFile) -> bytes:
         zip_buf = io.BytesIO()
+        enhanced_report_lines = []
+
         with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_STORED) as out_zip:
+            # Map of updated manifest rows by media_path
+            manifest_row_map = {row["original_media_file"]: row for row in result.manifest_rows}
+
             # Write matched figures
             for fig in result.matched_figures:
-                entry_path = f"{root_folder_name}/{fig.output_path}"
-                raw_bytes = docx_zip.read(fig.image.media_path)
-                out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
+                media_path = fig.image.media_path
+                if media_path in enhanced_images:
+                    raw_bytes = enhanced_images[media_path]
+                    # Update extension to .png
+                    base_out = posixpath.splitext(fig.output_path)[0]
+                    out_path = f"{base_out}.png"
+                    entry_path = f"{root_folder_name}/{out_path}"
+                    out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
+
+                    # Update manifest row
+                    row = manifest_row_map.get(media_path)
+                    if row:
+                        row["output_path"] = out_path
+                        row["extension"] = ".png"
+                        row["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
+                        meta = enhanced_meta.get(media_path, {})
+                        if "pixel_width" in meta and "pixel_height" in meta:
+                            row["pixel_width"] = meta["pixel_width"]
+                            row["pixel_height"] = meta["pixel_height"]
+                            row["effective_dpi"] = meta.get("effective_dpi", 300)
+                        else:
+                            try:
+                                with Image.open(io.BytesIO(raw_bytes)) as eimg:
+                                    row["pixel_width"] = eimg.width
+                                    row["pixel_height"] = eimg.height
+                                    if fig.image.placed_width_in > 0:
+                                        row["effective_dpi"] = int(round(eimg.width / fig.image.placed_width_in))
+                            except Exception:
+                                pass
+                        row["print_status"] = "OK"
+                        warn_list = [w for w in row["warnings"].split("; ") if w and "re-export" not in w.lower() and "soft" not in w.lower()]
+                        warn_list.append(f"Enhanced to {row['effective_dpi']} DPI")
+                        row["warnings"] = "; ".join(warn_list)
+
+                    enhanced_report_lines.append(
+                        f"- Fig {fig.figure_number} ({fig.image.media_filename}) -> Enhanced to {row['effective_dpi'] if row else 300} DPI ({row['pixel_width'] if row else '?'}x{row['pixel_height'] if row else '?'} px)"
+                    )
+                else:
+                    entry_path = f"{root_folder_name}/{fig.output_path}"
+                    raw_bytes = docx_zip.read(fig.image.media_path)
+                    out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
 
             # Write unmatched images
             for un_img in result.unmatched_images:
-                un_name = f"Unmatched_{un_img.doc_index:03d}__{un_img.media_filename}"
-                entry_path = f"{root_folder_name}/_unmatched/{un_name}"
-                raw_bytes = docx_zip.read(un_img.media_path)
-                out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
+                media_path = un_img.media_path
+                if media_path in enhanced_images:
+                    raw_bytes = enhanced_images[media_path]
+                    un_base = f"Unmatched_{un_img.doc_index:03d}__{posixpath.splitext(un_img.media_filename)[0]}"
+                    un_name = f"{un_base}.png"
+                    entry_path = f"{root_folder_name}/_unmatched/{un_name}"
+                    out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
+
+                    row = manifest_row_map.get(media_path)
+                    if row:
+                        row["output_path"] = f"_unmatched/{un_name}"
+                        row["extension"] = ".png"
+                        row["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
+                        meta = enhanced_meta.get(media_path, {})
+                        if "pixel_width" in meta and "pixel_height" in meta:
+                            row["pixel_width"] = meta["pixel_width"]
+                            row["pixel_height"] = meta["pixel_height"]
+                            row["effective_dpi"] = meta.get("effective_dpi", 300)
+                        else:
+                            try:
+                                with Image.open(io.BytesIO(raw_bytes)) as eimg:
+                                    row["pixel_width"] = eimg.width
+                                    row["pixel_height"] = eimg.height
+                                    if un_img.placed_width_in > 0:
+                                        row["effective_dpi"] = int(round(eimg.width / un_img.placed_width_in))
+                            except Exception:
+                                pass
+                        row["print_status"] = "OK"
+                        row["warnings"] = "No caption matched; Enhanced to 300 DPI"
+                else:
+                    un_name = f"Unmatched_{un_img.doc_index:03d}__{un_img.media_filename}"
+                    entry_path = f"{root_folder_name}/_unmatched/{un_name}"
+                    raw_bytes = docx_zip.read(un_img.media_path)
+                    out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
 
             # Write manifest.csv
             csv_buf = io.StringIO()
@@ -900,10 +977,16 @@ def build_extracted_figures_zip(
                 compress_type=zipfile.ZIP_STORED,
             )
 
-            # Write report.txt
+            # Write report.txt (append enhanced section if any were enhanced)
+            report_text = result.report_text
+            if enhanced_report_lines:
+                report_text += "\n\nENHANCED FIGURES IN THIS ARCHIVE\n"
+                report_text += "-------------------------------------------------------\n"
+                report_text += "\n".join(enhanced_report_lines)
+
             out_zip.writestr(
                 f"{root_folder_name}/report.txt",
-                result.report_text.encode("utf-8"),
+                report_text.encode("utf-8"),
                 compress_type=zipfile.ZIP_STORED,
             )
 
