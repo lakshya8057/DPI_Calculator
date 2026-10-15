@@ -535,128 +535,136 @@ async def docx_analyze_endpoint(
         raise HTTPException(status_code=400, detail="Uploaded file must be a .docx archive.")
 
     # Write to a temporary file for streaming extraction
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
-        tmp_path = tmp.name
-        try:
-            total_read = 0
-            while chunk := await file.read(1024 * 1024):
-                total_read += len(chunk)
-                if total_read > MAX_DOCX_SIZE:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"DOCX file exceeds {MAX_DOCX_SIZE // (1024 * 1024)} MB limit.",
-                    )
-                tmp.write(chunk)
-            tmp.flush()
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    tmp_path = tmp.name
+    try:
+        total_read = 0
+        while chunk := await file.read(1024 * 1024):
+            total_read += len(chunk)
+            if total_read > MAX_DOCX_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"DOCX file exceeds {MAX_DOCX_SIZE // (1024 * 1024)} MB limit.",
+                )
+            tmp.write(chunk)
+        tmp.flush()
+        tmp.close()  # Must close file handle before reading or unlinking on Windows
 
-            parse_res = parse_docx_figures(tmp_path, caption_position=caption_position)
+        parse_res = parse_docx_figures(tmp_path, caption_position=caption_position)
 
-            # Generate preview data URLs for table display
-            with zipfile.ZipFile(tmp_path, "r") as docx_zip:
-                parts_json: dict[str, list[dict]] = {}
-                for part_num, figs in parse_res.parts.items():
-                    figs_list = []
-                    for f in figs:
-                        thumb = None
-                        try:
-                            raw = docx_zip.read(f.image.media_path)
-                            thumb = make_thumbnail_data_url(raw, max_size=90)
-                        except Exception:
-                            pass
-
-                        figs_list.append(
-                            {
-                                "sequence": f.sequence,
-                                "part": f.part,
-                                "figure_number": f.figure_number,
-                                "caption_text": f.caption_text,
-                                "media_filename": f.image.media_filename,
-                                "original_media_file": f.image.media_path,
-                                "output_path": f.output_path,
-                                "extension": f.image.extension,
-                                "pixel_width": f.image.pixel_width,
-                                "pixel_height": f.image.pixel_height,
-                                "pixels_str": (
-                                    f"{f.image.pixel_width}x{f.image.pixel_height}"
-                                    if f.image.pixel_width
-                                    else ("Vector" if f.image.is_vector else "-")
-                                ),
-                                "placed_width_in": f.image.placed_width_in,
-                                "effective_dpi": f.effective_dpi,
-                                "print_status": f.print_status,
-                                "sha256": f.image.sha256,
-                                "warnings": f.warnings,
-                                "thumbnail": thumb,
-                            }
-                        )
-                    parts_json[str(part_num)] = figs_list
-
-                unmatched_list = []
-                for u in parse_res.unmatched_images:
+        # Generate preview data URLs for table display
+        with zipfile.ZipFile(tmp_path, "r") as docx_zip:
+            parts_json: dict[str, list[dict]] = {}
+            for part_num, figs in parse_res.parts.items():
+                figs_list = []
+                for f in figs:
                     thumb = None
                     try:
-                        raw = docx_zip.read(u.media_path)
+                        raw = docx_zip.read(f.image.media_path)
                         thumb = make_thumbnail_data_url(raw, max_size=90)
                     except Exception:
                         pass
 
-                    status = "OK (Vector)" if u.is_vector else (
-                        "OK" if u.effective_dpi and u.effective_dpi >= 300 else (
-                            "Re-export to 300 DPI" if u.effective_dpi and u.effective_dpi >= 200 else "Will print soft"
-                        )
-                    )
-                    unmatched_list.append(
+                    figs_list.append(
                         {
-                            "doc_index": u.doc_index,
-                            "media_filename": u.media_filename,
-                            "original_media_file": u.media_path,
-                            "output_path": f"_unmatched/Unmatched_{u.doc_index:03d}__{u.media_filename}",
-                            "extension": u.extension,
-                            "pixel_width": u.pixel_width,
-                            "pixel_height": u.pixel_height,
+                            "sequence": f.sequence,
+                            "part": f.part,
+                            "figure_number": f.figure_number,
+                            "caption_text": f.caption_text,
+                            "media_filename": f.image.media_filename,
+                            "original_media_file": f.image.media_path,
+                            "output_path": f.output_path,
+                            "extension": f.image.extension,
+                            "pixel_width": f.image.pixel_width,
+                            "pixel_height": f.image.pixel_height,
                             "pixels_str": (
-                                f"{u.pixel_width}x{u.pixel_height}"
-                                if u.pixel_width
-                                else ("Vector" if u.is_vector else "-")
+                                f"{f.image.pixel_width}x{f.image.pixel_height}"
+                                if f.image.pixel_width
+                                else ("Vector" if f.image.is_vector else "-")
                             ),
-                            "placed_width_in": u.placed_width_in,
-                            "effective_dpi": u.effective_dpi,
-                            "print_status": status,
-                            "sha256": u.sha256,
-                            "warnings": ["No caption matched within search window"],
+                            "placed_width_in": f.image.placed_width_in,
+                            "effective_dpi": f.effective_dpi,
+                            "print_status": f.print_status,
+                            "sha256": f.image.sha256,
+                            "warnings": f.warnings,
                             "thumbnail": thumb,
                         }
                     )
+                parts_json[str(part_num)] = figs_list
 
-                unmatched_captions_list = [
-                    {"paragraph_idx": c.paragraph_idx, "full_text": c.full_text}
-                    for c in parse_res.unmatched_captions
-                ]
+            unmatched_list = []
+            for u in parse_res.unmatched_images:
+                thumb = None
+                try:
+                    raw = docx_zip.read(u.media_path)
+                    thumb = make_thumbnail_data_url(raw, max_size=90)
+                except Exception:
+                    pass
 
-                total_matched = len(parse_res.matched_figures)
-                total_unmatched = len(parse_res.unmatched_images)
-                total_images = total_matched + total_unmatched
+                status = "OK (Vector)" if u.is_vector else (
+                    "OK" if u.effective_dpi and u.effective_dpi >= 300 else (
+                        "Re-export to 300 DPI" if u.effective_dpi and u.effective_dpi >= 200 else "Will print soft"
+                    )
+                )
+                unmatched_list.append(
+                    {
+                        "doc_index": u.doc_index,
+                        "media_filename": u.media_filename,
+                        "original_media_file": u.media_path,
+                        "output_path": f"_unmatched/Unmatched_{u.doc_index:03d}__{u.media_filename}",
+                        "extension": u.extension,
+                        "pixel_width": u.pixel_width,
+                        "pixel_height": u.pixel_height,
+                        "pixels_str": (
+                            f"{u.pixel_width}x{u.pixel_height}"
+                            if u.pixel_width
+                            else ("Vector" if u.is_vector else "-")
+                        ),
+                        "placed_width_in": u.placed_width_in,
+                        "effective_dpi": u.effective_dpi,
+                        "print_status": status,
+                        "sha256": u.sha256,
+                        "warnings": ["No caption matched within search window"],
+                        "thumbnail": thumb,
+                    }
+                )
 
-                return {
-                    "filename": file.filename,
-                    "summary": {
-                        "total_images": total_images,
-                        "matched": total_matched,
-                        "unmatched": total_unmatched,
-                        "duplicates": len(parse_res.duplicates),
-                        "gaps": len(parse_res.gaps),
-                    },
-                    "parts": parts_json,
-                    "unmatched": unmatched_list,
-                    "unmatched_captions": unmatched_captions_list,
-                    "duplicates": parse_res.duplicates,
-                    "gaps": parse_res.gaps,
-                    "report_text": parse_res.report_text,
-                    "warnings": parse_res.warnings,
-                }
-        finally:
-            if os.path.exists(tmp_path):
+            unmatched_captions_list = [
+                {"paragraph_idx": c.paragraph_idx, "full_text": c.full_text}
+                for c in parse_res.unmatched_captions
+            ]
+
+            total_matched = len(parse_res.matched_figures)
+            total_unmatched = len(parse_res.unmatched_images)
+            total_images = total_matched + total_unmatched
+
+            return {
+                "filename": file.filename,
+                "summary": {
+                    "total_images": total_images,
+                    "matched": total_matched,
+                    "unmatched": total_unmatched,
+                    "duplicates": len(parse_res.duplicates),
+                    "gaps": len(parse_res.gaps),
+                },
+                "parts": parts_json,
+                "unmatched": unmatched_list,
+                "unmatched_captions": unmatched_captions_list,
+                "duplicates": parse_res.duplicates,
+                "gaps": parse_res.gaps,
+                "report_text": parse_res.report_text,
+                "warnings": parse_res.warnings,
+            }
+    finally:
+        try:
+            tmp.close()
+        except Exception:
+            pass
+        if os.path.exists(tmp_path):
+            try:
                 os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 @app.post("/api/docx/extract")
@@ -670,37 +678,45 @@ async def docx_extract_endpoint(
 
     stem = os.path.splitext(file.filename or "book")[0]
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
-        tmp_path = tmp.name
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    tmp_path = tmp.name
+    try:
+        total_read = 0
+        while chunk := await file.read(1024 * 1024):
+            total_read += len(chunk)
+            if total_read > MAX_DOCX_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"DOCX file exceeds {MAX_DOCX_SIZE // (1024 * 1024)} MB limit.",
+                )
+            tmp.write(chunk)
+        tmp.flush()
+        tmp.close()
+
+        zip_bytes, _ = build_extracted_figures_zip(
+            tmp_path,
+            caption_position=caption_position,
+            root_folder_name=f"{stem}_figures",
+        )
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{stem}_figures.zip"',
+        }
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers=headers,
+        )
+    finally:
         try:
-            total_read = 0
-            while chunk := await file.read(1024 * 1024):
-                total_read += len(chunk)
-                if total_read > MAX_DOCX_SIZE:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"DOCX file exceeds {MAX_DOCX_SIZE // (1024 * 1024)} MB limit.",
-                    )
-                tmp.write(chunk)
-            tmp.flush()
-
-            zip_bytes, _ = build_extracted_figures_zip(
-                tmp_path,
-                caption_position=caption_position,
-                root_folder_name=f"{stem}_figures",
-            )
-
-            headers = {
-                "Content-Disposition": f'attachment; filename="{stem}_figures.zip"',
-            }
-            return Response(
-                content=zip_bytes,
-                media_type="application/zip",
-                headers=headers,
-            )
-        finally:
-            if os.path.exists(tmp_path):
+            tmp.close()
+        except Exception:
+            pass
+        if os.path.exists(tmp_path):
+            try:
                 os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 @app.post("/api/docx/extract-single")
@@ -712,33 +728,41 @@ async def docx_extract_single_endpoint(
     if not (file.filename or "").lower().endswith(".docx"):
         raise HTTPException(status_code=400, detail="Uploaded file must be a .docx archive.")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
-        tmp_path = tmp.name
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+    tmp_path = tmp.name
+    try:
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+        tmp.flush()
+        tmp.close()
+
+        with zipfile.ZipFile(tmp_path, "r") as docx_zip:
+            if media_path not in docx_zip.namelist():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Media entry '{media_path}' not found in docx.",
+                )
+            data = docx_zip.read(media_path)
+
+        ext = os.path.splitext(media_path)[1].lower()
+        media_type = "image/png" if ext == ".png" else (
+            "image/jpeg" if ext in (".jpg", ".jpeg") else "application/octet-stream"
+        )
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{os.path.basename(media_path)}"',
+        }
+        return Response(content=data, media_type=media_type, headers=headers)
+    finally:
         try:
-            while chunk := await file.read(1024 * 1024):
-                tmp.write(chunk)
-            tmp.flush()
-
-            with zipfile.ZipFile(tmp_path, "r") as docx_zip:
-                if media_path not in docx_zip.namelist():
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Media entry '{media_path}' not found in docx.",
-                    )
-                data = docx_zip.read(media_path)
-
-            ext = os.path.splitext(media_path)[1].lower()
-            media_type = "image/png" if ext == ".png" else (
-                "image/jpeg" if ext in (".jpg", ".jpeg") else "application/octet-stream"
-            )
-
-            headers = {
-                "Content-Disposition": f'attachment; filename="{os.path.basename(media_path)}"',
-            }
-            return Response(content=data, media_type=media_type, headers=headers)
-        finally:
-            if os.path.exists(tmp_path):
+            tmp.close()
+        except Exception:
+            pass
+        if os.path.exists(tmp_path):
+            try:
                 os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 # Mount static directory for frontend

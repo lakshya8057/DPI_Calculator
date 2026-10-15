@@ -1701,9 +1701,19 @@
               <td><span class="badge ${badgeClass}">${f.print_status}</span></td>
               <td>${warnText}</td>
               <td>
-                <button class="btn btn-secondary btn-sm" onclick='sendFigureToEnhancer(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
-                  Enhance
-                </button>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <button class="btn btn-secondary btn-sm" title="Download original figure file" onclick='downloadSingleFigure(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download
+                  </button>
+                  <button class="btn btn-secondary btn-sm" title="Send to Enhancer tab" onclick='sendFigureToEnhancer(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
+                    Enhance
+                  </button>
+                </div>
               </td>
             </tr>
           `;
@@ -1726,7 +1736,7 @@
                   <th>DPI</th>
                   <th>Status</th>
                   <th>Warnings</th>
-                  <th>Action</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1770,9 +1780,19 @@
                 <td><span class="badge ${badgeClass}">${u.print_status}</span></td>
                 <td><span style="color: var(--text-muted); font-size: 0.76rem;">Saved to _unmatched/</span></td>
                 <td>
-                  <button class="btn btn-secondary btn-sm" onclick='sendFigureToEnhancer(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
-                    Enhance
-                  </button>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <button class="btn btn-secondary btn-sm" title="Download original image file" onclick='downloadSingleFigure(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Download
+                    </button>
+                    <button class="btn btn-secondary btn-sm" title="Send to Enhancer tab" onclick='sendFigureToEnhancer(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
+                      Enhance
+                    </button>
+                  </div>
                 </td>
               </tr>
             `;
@@ -1795,7 +1815,7 @@
                     <th>DPI</th>
                     <th>Status</th>
                     <th>Destination</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1875,6 +1895,41 @@
         btn.disabled = false;
         btnText.textContent = "Download original images (ZIP)";
         spinner.style.display = "none";
+      }
+    }
+
+    async function downloadSingleFigure(figureItem) {
+      if (!currentDocxFile) return;
+
+      const formData = new FormData();
+      formData.append("file", currentDocxFile);
+      formData.append("media_path", figureItem.original_media_file);
+
+      try {
+        const resp = await fetch("/api/docx/extract-single", { method: "POST", body: formData });
+        if (!resp.ok) {
+          alert("Could not download image from DOCX.");
+          return;
+        }
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+
+        // Choose standardized filename: e.g. "Fig_1.1__image37.png" or "Unmatched_001__image12.png"
+        let outFilename = figureItem.output_path 
+          ? figureItem.output_path.split("/").pop() 
+          : figureItem.media_filename;
+
+        a.download = outFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Individual download error:", err);
+        alert("Failed to download figure image.");
       }
     }
 

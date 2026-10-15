@@ -397,22 +397,8 @@ def find_images_in_element(
     return images
 
 
-def parse_docx_figures(
-    docx_file_or_bytes: Any, caption_position: str = "auto"
-) -> ParseResult:
-    """Parse a DOCX file to find figures, match captions, and prepare extraction report.
-
-    Args:
-        docx_file_or_bytes: Path string, bytes, or file-like object of the .docx archive.
-        caption_position: "auto", "below", or "above".
-    """
-    if isinstance(docx_file_or_bytes, (bytes, bytearray)):
-        zip_file = zipfile.ZipFile(io.BytesIO(docx_file_or_bytes))
-    elif isinstance(docx_file_or_bytes, str):
-        zip_file = zipfile.ZipFile(docx_file_or_bytes, "r")
-    else:
-        zip_file = zipfile.ZipFile(docx_file_or_bytes)
-
+def _parse_docx_zip(zip_file: zipfile.ZipFile, caption_position: str = "auto") -> ParseResult:
+    """Internal parser that operates on an open zipfile.ZipFile instance."""
     # 1. Read document relationships
     doc_rels = read_relationships(zip_file, "word/_rels/document.xml.rels")
 
@@ -436,12 +422,10 @@ def parse_docx_figures(
     doc_image_counter = 1
 
     for p_idx, p in enumerate(root.xpath("//w:p", namespaces=NAMESPACES)):
-        # Determine location
         in_tbl = bool(p.xpath("ancestor::w:tbl", namespaces=NAMESPACES))
         in_txbx = bool(p.xpath("ancestor::w:txbxContent", namespaces=NAMESPACES))
         location = "table" if in_tbl else ("textbox" if in_txbx else "body")
 
-        # Extract text and caption info
         text, is_seq = extract_paragraph_text(p)
         style_vals = p.xpath("./w:pPr/w:pStyle/@w:val", namespaces=NAMESPACES)
         has_caption_style = any("caption" in str(s).lower() for s in style_vals)
@@ -463,7 +447,6 @@ def parse_docx_figures(
                 )
                 all_captions.append(caption_obj)
 
-        # Extract images from this paragraph
         p_images = find_images_in_element(
             p, doc_rels, zip_file, location, p_idx, doc_image_counter
         )
@@ -499,7 +482,7 @@ def parse_docx_figures(
 
     # 3. Match images with captions
     matched_figures: List[MatchedFigure] = []
-    used_captions: Set[int] = set()  # set of paragraph_idx of used captions
+    used_captions: Set[int] = set()
     matched_image_indices: Set[int] = set()
 
     for p_rec in paragraph_records:
@@ -513,14 +496,11 @@ def parse_docx_figures(
         for img in images_here:
             best_caption: Optional[DocxCaption] = None
 
-            # First priority: check same paragraph if unused
             if p_rec["caption"] and p_rec["caption"].paragraph_idx not in used_captions:
                 best_caption = p_rec["caption"]
             else:
-                # Search candidate paragraphs according to caption_position preference
-                candidates: List[Tuple[int, DocxCaption, str]] = []  # (distance, caption, direction)
+                candidates: List[Tuple[int, DocxCaption, str]] = []
 
-                # Search below (after)
                 if caption_position in ("auto", "below"):
                     non_empty_count = 0
                     for j in range(p_idx + 1, len(paragraph_records)):
@@ -530,11 +510,10 @@ def parse_docx_figures(
                         cap = paragraph_records[j]["caption"]
                         if cap and cap.paragraph_idx not in used_captions:
                             candidates.append((non_empty_count, cap, "below"))
-                            break  # Nearest unused caption below
+                            break
                         if non_empty_count >= 3:
                             break
 
-                # Search above (before)
                 if caption_position in ("auto", "above"):
                     non_empty_count = 0
                     for j in range(p_idx - 1, -1, -1):
@@ -544,15 +523,11 @@ def parse_docx_figures(
                         cap = paragraph_records[j]["caption"]
                         if cap and cap.paragraph_idx not in used_captions:
                             candidates.append((non_empty_count, cap, "above"))
-                            break  # Nearest unused caption above
+                            break
                         if non_empty_count >= 3:
                             break
 
                 if candidates:
-                    # Preference logic:
-                    # 1. Caption style
-                    # 2. Smaller distance
-                    # 3. 'below' over 'above' in auto
                     def sort_key(c: Tuple[int, DocxCaption, str]):
                         dist, cap_obj, direction = c
                         style_pref = 0 if cap_obj.has_caption_style else 1
@@ -578,7 +553,6 @@ def parse_docx_figures(
                 if img.location in ("header", "footnote"):
                     warnings.append(f"Located in document {img.location}")
 
-                # Determine print status
                 if img.is_vector:
                     status = "OK (Vector)"
                 elif img.effective_dpi is not None:
@@ -593,7 +567,7 @@ def parse_docx_figures(
 
                 matched_figures.append(
                     MatchedFigure(
-                        sequence=0,  # Will be assigned after ordering
+                        sequence=0,
                         part=best_caption.part,
                         figure_number=best_caption.fig_num,
                         base_figure_number=best_caption.fig_num,
@@ -618,14 +592,12 @@ def parse_docx_figures(
     duplicates: List[str] = []
     gaps: List[str] = []
 
-    # Sort and resolve duplicates
     ordered_matched: List[MatchedFigure] = []
     seq_counter = 1
 
     for part_num in sorted(parts.keys()):
         part_figs = parts[part_num]
 
-        # Natural sort by figure number, tie-breaking by document index
         def natural_fig_key(f: MatchedFigure):
             nums = re.findall(r"\d+", f.base_figure_number)
             sub_num = int(nums[1]) if len(nums) > 1 else 0
@@ -633,7 +605,6 @@ def parse_docx_figures(
 
         part_figs.sort(key=natural_fig_key)
 
-        # Detect duplicates and assign _a, _b suffixes
         num_counts: Dict[str, List[MatchedFigure]] = {}
         for f in part_figs:
             num_counts.setdefault(f.base_figure_number, []).append(f)
@@ -651,7 +622,6 @@ def parse_docx_figures(
                         f"Duplicate figure number {base_num} (assigned suffix {suffix})"
                     )
 
-        # Detect gaps in expected integer sequence
         seen_numbers: List[int] = []
         for f in part_figs:
             nums = re.findall(r"\d+", f.base_figure_number)
@@ -665,7 +635,6 @@ def parse_docx_figures(
             for m_val in sorted(missing):
                 gaps.append(f"Part {part_num}: Missing Fig {part_num}.{m_val} in sequence")
 
-        # Assign output path and sequence
         for f in part_figs:
             f.sequence = seq_counter
             seq_counter += 1
@@ -802,77 +771,98 @@ def parse_docx_figures(
     )
 
 
+def parse_docx_figures(
+    docx_file_or_bytes: Any, caption_position: str = "auto"
+) -> ParseResult:
+    """Parse a DOCX file to find figures, match captions, and prepare extraction report.
+
+    Safely manages ZipFile handle lifecycles on Windows.
+    """
+    if isinstance(docx_file_or_bytes, (bytes, bytearray)):
+        with zipfile.ZipFile(io.BytesIO(docx_file_or_bytes)) as z:
+            return _parse_docx_zip(z, caption_position)
+    elif isinstance(docx_file_or_bytes, str):
+        with zipfile.ZipFile(docx_file_or_bytes, "r") as z:
+            return _parse_docx_zip(z, caption_position)
+    else:
+        z = zipfile.ZipFile(docx_file_or_bytes)
+        try:
+            return _parse_docx_zip(z, caption_position)
+        finally:
+            z.close()
+
+
 def build_extracted_figures_zip(
     docx_file_or_bytes: Any,
     caption_position: str = "auto",
     root_folder_name: str = "extracted_figures",
 ) -> Tuple[bytes, ParseResult]:
-    """Extract figures with original byte preservation and build an uncompressed ZIP.
-
-    Returns:
-        (zip_bytes, parse_result)
-    """
-    if isinstance(docx_file_or_bytes, (bytes, bytearray)):
-        docx_zip = zipfile.ZipFile(io.BytesIO(docx_file_or_bytes))
-    elif isinstance(docx_file_or_bytes, str):
-        docx_zip = zipfile.ZipFile(docx_file_or_bytes, "r")
-    else:
-        docx_zip = zipfile.ZipFile(docx_file_or_bytes)
-
+    """Extract figures with original byte preservation and build an uncompressed ZIP."""
     result = parse_docx_figures(docx_file_or_bytes, caption_position=caption_position)
 
-    zip_buf = io.BytesIO()
+    def _build(docx_zip: zipfile.ZipFile) -> bytes:
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_STORED) as out_zip:
+            # Write matched figures
+            for fig in result.matched_figures:
+                entry_path = f"{root_folder_name}/{fig.output_path}"
+                raw_bytes = docx_zip.read(fig.image.media_path)
+                out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
 
-    # Write output ZIP strictly with zipfile.ZIP_STORED (no recompression or pass over bytes)
-    with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_STORED) as out_zip:
-        # Write matched figures
-        for fig in result.matched_figures:
-            entry_path = f"{root_folder_name}/{fig.output_path}"
-            # Direct byte stream copy: zero Pillow modification or recompression
-            raw_bytes = docx_zip.read(fig.image.media_path)
-            out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
+            # Write unmatched images
+            for un_img in result.unmatched_images:
+                un_name = f"Unmatched_{un_img.doc_index:03d}__{un_img.media_filename}"
+                entry_path = f"{root_folder_name}/_unmatched/{un_name}"
+                raw_bytes = docx_zip.read(un_img.media_path)
+                out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
 
-        # Write unmatched images
-        for un_img in result.unmatched_images:
-            un_name = f"Unmatched_{un_img.doc_index:03d}__{un_img.media_filename}"
-            entry_path = f"{root_folder_name}/_unmatched/{un_name}"
-            raw_bytes = docx_zip.read(un_img.media_path)
-            out_zip.writestr(entry_path, raw_bytes, compress_type=zipfile.ZIP_STORED)
+            # Write manifest.csv
+            csv_buf = io.StringIO()
+            fieldnames = [
+                "sequence",
+                "part",
+                "figure_number",
+                "caption_text",
+                "original_media_file",
+                "output_path",
+                "extension",
+                "pixel_width",
+                "pixel_height",
+                "placed_width_in",
+                "effective_dpi",
+                "print_status",
+                "sha256",
+                "warnings",
+            ]
+            writer = csv.DictWriter(csv_buf, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in result.manifest_rows:
+                writer.writerow(row)
 
-        # Write manifest.csv
-        csv_buf = io.StringIO()
-        fieldnames = [
-            "sequence",
-            "part",
-            "figure_number",
-            "caption_text",
-            "original_media_file",
-            "output_path",
-            "extension",
-            "pixel_width",
-            "pixel_height",
-            "placed_width_in",
-            "effective_dpi",
-            "print_status",
-            "sha256",
-            "warnings",
-        ]
-        writer = csv.DictWriter(csv_buf, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in result.manifest_rows:
-            writer.writerow(row)
+            out_zip.writestr(
+                f"{root_folder_name}/manifest.csv",
+                csv_buf.getvalue().encode("utf-8-sig"),
+                compress_type=zipfile.ZIP_STORED,
+            )
 
-        out_zip.writestr(
-            f"{root_folder_name}/manifest.csv",
-            csv_buf.getvalue().encode("utf-8-sig"),
-            compress_type=zipfile.ZIP_STORED,
-        )
+            # Write report.txt
+            out_zip.writestr(
+                f"{root_folder_name}/report.txt",
+                result.report_text.encode("utf-8"),
+                compress_type=zipfile.ZIP_STORED,
+            )
 
-        # Write report.txt
-        out_zip.writestr(
-            f"{root_folder_name}/report.txt",
-            result.report_text.encode("utf-8"),
-            compress_type=zipfile.ZIP_STORED,
-        )
+        return zip_buf.getvalue()
 
-    return zip_buf.getvalue(), result
+    if isinstance(docx_file_or_bytes, (bytes, bytearray)):
+        with zipfile.ZipFile(io.BytesIO(docx_file_or_bytes)) as z:
+            return _build(z), result
+    elif isinstance(docx_file_or_bytes, str):
+        with zipfile.ZipFile(docx_file_or_bytes, "r") as z:
+            return _build(z), result
+    else:
+        z = zipfile.ZipFile(docx_file_or_bytes)
+        try:
+            return _build(z), result
+        finally:
+            z.close()

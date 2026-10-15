@@ -273,3 +273,48 @@ def test_figure_in_table_cell_found_in_right_order():
     assert result.parts[2][0].image.location == "table"
     assert result.parts[2][1].figure_number == "2.2"
     assert result.parts[2][1].image.location == "body"
+
+
+def test_docx_api_endpoints_analyze_and_extract():
+    """Verify HTTP endpoints /api/docx/analyze and /api/docx/extract on Windows."""
+    from app import app
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    doc = docx.Document()
+    p = doc.add_paragraph()
+    p.add_run().add_picture(io.BytesIO(create_solid_image(120, 80, (20, 40, 60))))
+    doc.add_paragraph("Figure 1.1: Test API figure")
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    docx_bytes = buf.getvalue()
+
+    # 1. Test /api/docx/analyze
+    resp_analyze = client.post(
+        "/api/docx/analyze",
+        files={"file": ("book_test.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={"caption_position": "auto"},
+    )
+    assert resp_analyze.status_code == 200, resp_analyze.text
+    data = resp_analyze.json()
+    assert data["summary"]["matched"] == 1
+    assert "1" in data["parts"]
+
+    # 2. Test /api/docx/extract
+    resp_extract = client.post(
+        "/api/docx/extract",
+        files={"file": ("book_test.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={"caption_position": "auto"},
+    )
+    assert resp_extract.status_code == 200, resp_extract.text
+    assert "attachment" in resp_extract.headers["Content-Disposition"]
+    assert "book_test_figures.zip" in resp_extract.headers["Content-Disposition"]
+
+    # Verify extracted zip content
+    with zipfile.ZipFile(io.BytesIO(resp_extract.content)) as z:
+        namelist = z.namelist()
+        assert any(n.endswith("manifest.csv") for n in namelist)
+        assert any(n.endswith("report.txt") for n in namelist)
+        assert any("Fig_1.1__" in n for n in namelist)
