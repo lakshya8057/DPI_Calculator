@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Print DPI Calculator & Image Enhancer</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --card-border-subtle: #f1f5f9;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-light: #eff6ff;
+      --text-main: #0f172a;
+      --text-body: #334155;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+      
+      /* Calm semantic colors */
+      --green: #15803d;
+      --green-bg: #f0fdf4;
+      --green-border: #bbf7d0;
+
+      --amber: #b45309;
+      --amber-bg: #fffbeb;
+      --amber-border: #fde68a;
+
+      --red: #b91c1c;
+      --red-bg: #fef2f2;
+      --red-border: #fecaca;
+
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-body);
+      font-family: var(--font);
+      min-height: 100vh;
+      padding: 32px 24px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .logo-group h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-group p {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      margin-top: 3px;
+    }
+
+    .tab-group {
+      display: flex;
+      background: #e2e8f0;
+      padding: 3px;
+      border-radius: 8px;
+      gap: 2px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn.active {
+      background: #ffffff;
+      color: var(--text-main);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Main Grid */
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 920px) {
+      .grid-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-main);
+      letter-spacing: -0.01em;
+    }
+
+    /* Drop Zone */
+    .drop-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: #f8fafc;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    .drop-zone svg {
+      width: 36px;
+      height: 36px;
+      fill: none;
+      stroke: var(--primary);
+      stroke-width: 1.75;
+      margin-bottom: 6px;
+    }
+
+    .drop-zone p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .drop-zone span.highlight {
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    /* Form Fields */
+    .form-group {
+      margin-top: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    input[type="number"], select {
+      width: 100%;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      color: var(--text-main);
+      padding: 8px 12px;
+      font-size: 0.92rem;
+      font-family: inherit;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    input[type="number"]:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .preset-container {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .preset-btn {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: var(--text-body);
+      padding: 4px 9px;
+      font-size: 0.78rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .preset-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
+    .preset-btn.active {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Metric Display */
+    .metric-display {
+      background: #f8fafc;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-top: 18px;
+    }
+
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .metric-header-title {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .effective-dpi-val {
+      font-size: 2.1rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--text-main);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .badge.green {
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid var(--green-border);
+    }
+
+    .badge.amber {
+      background: var(--amber-bg);
+      color: var(--amber);
+      border: 1px solid var(--amber-border);
+    }
+
+    .badge.red {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid var(--red-border);
+    }
+
+    .badge.gray {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+    }
+
+    .stat-list {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 0.82rem;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+    }
+
+    .stat-item .stat-label {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+    }
+
+    .stat-item .stat-val {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Alerts */
+    .alert {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .alert.warning {
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-border);
+      color: #92400e;
+    }
+
+    .alert.info {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+    }
+
+    .alert-icon {
+      flex-shrink: 0;
+      font-size: 0.95rem;
+      line-height: 1.2;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 600;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.92rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s ease, opacity 0.15s ease;
+      margin-top: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      background: #ffffff;
+      color: var(--text-body);
+      border: 1px solid #cbd5e1;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #f8fafc;
+      border-color: #94a3b8;
+      color: var(--text-main);
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      border-radius: 5px;
+      width: auto;
+      margin-top: 0;
+    }
+
+    /* Spinner */
+    .spinner {
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-left-color: #ffffff;
+      border-radius: 50%;
+      width: 15px;
+      height: 15px;
+      animation: spin 0.7s linear infinite;
+    }
+
+    .spinner-dark {
+      border: 2px solid rgba(0, 0, 0, 0.15);
+      border-left-color: var(--primary);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Preview Section */
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .preview-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .zoom-controls {
+      display: flex;
+      gap: 2px;
+      background: #f1f5f9;
+      padding: 2px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .zoom-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .zoom-btn.active {
+      background: #ffffff;
+      color: var(--text-main);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .view-comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      flex: 1;
+      min-height: 480px;
+    }
+
+    @media (max-width: 768px) {
+      .view-comparison {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .preview-box {
+      background: #ffffff;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .preview-box-header {
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--card-border);
+      font-size: 0.82rem;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-main);
+    }
+
+    /* Light checkerboard background for transparency preview */
+    .viewport {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: 
+        linear-gradient(45deg, #f1f5f9 25%, transparent 25%), 
+        linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #f1f5f9 75%), 
+        linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      background-color: #ffffff;
+      min-height: 380px;
+      position: relative;
+    }
+
+    .viewport img {
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+      transition: transform 0.2s ease;
+      transform-origin: center center;
+    }
+
+    .viewport img.zoom-100 {
+      max-width: none;
+      transform: scale(1);
+    }
+
+    .viewport img.zoom-200 {
+      max-width: none;
+      transform: scale(2);
+      image-rendering: pixelated;
+    }
+
+    .preview-empty {
+      color: var(--text-light);
+      font-size: 0.88rem;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .preview-box-footer {
+      padding: 9px 14px;
+      background: #f8fafc;
+      border-top: 1px solid var(--card-border);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Panels */
+    .panel-view {
+      display: none;
+    }
+
+    .panel-view.active {
+      display: block;
+    }
+
+    .file-queue {
+      margin-top: 16px;
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+
+    .queue-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 0.85rem;
+      color: var(--text-body);
+    }
+
+    .queue-item:last-child {
+      border-bottom: none;
+    }
+
+    .note-text {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    /* DOCX Extract Styles */
+    .docx-summary-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+
+    .summary-card {
+      background: #f8fafc;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .summary-card .label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .summary-card .value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-top: 2px;
+    }
+
+    .docx-filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      background: #f8fafc;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+
+    .filter-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+
+    .part-section {
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    .part-header {
+      padding: 12px 16px;
+      background: #f8fafc;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-main);
+      user-select: none;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .part-header:hover {
+      background: #f1f5f9;
+    }
+
+    .part-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    .part-table th {
+      background: #ffffff;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .part-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--card-border-subtle);
+      vertical-align: middle;
+      color: var(--text-body);
+    }
+
+    .part-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .part-table tr:hover td {
+      background: #f8fafc;
+    }
+
+    .thumb-cell {
+      width: 60px;
+      text-align: center;
+    }
+
+    .thumb-img {
+      width: 50px;
+      height: 40px;
+      object-fit: contain;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .caption-cell {
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: help;
+    }
+
+    .actions-bar {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    /* Modal / Report Pre */
+    .report-box {
+      margin-top: 16px;
+      background: #f8fafc;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      max-height: 280px;
+      overflow-y: auto;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="logo-group">
+        <h1>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          Print DPI Enhancer
+        </h1>
+        <p>Book production print measurement and resolution enhancement (Target: 300 DPI)</p>
+      </div>
+      <div class="tab-group">
+        <button class="tab-btn active" id="tabSingle" onclick="switchTab('single')">Single Image</button>
+        <button class="tab-btn" id="tabBatch" onclick="switchTab('batch')">Batch Mode</button>
+        <button class="tab-btn" id="tabDocx" onclick="switchTab('docx')">DOCX Extract</button>
+      </div>
+    </header>
+
+    <!-- 1. SINGLE IMAGE VIEW -->
+    <div id="singleView" class="grid-layout">
+      <!-- Left Column: Controls & Metrics -->
+      <div class="card">
+        <h2 class="card-title">Image & Print Specs</h2>
+        
+        <!-- Dropzone -->
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <p><span class="highlight">Choose image</span> or drag & drop</p>
+          <p style="font-size: 0.76rem; margin-top: 4px; color: var(--text-light);">PNG, JPG, WEBP, TIFF (Max 25 MB)</p>
+          <input type="file" id="fileInput" class="file-input" accept=".png,.jpg,.jpeg,.webp,.tiff,.tif">
+        </div>
+
+        <!-- Inputs Form -->
+        <div class="form-group">
+          <label>Placed Width (inches)</label>
+          <input type="number" id="placedWidthInput" step="0.01" min="0.1" max="50" value="4.88" oninput="recalcDPI()">
+          <div class="preset-container">
+            <button type="button" class="preset-btn active" onclick="setPlacedWidth(4.88, this)">4.88"</button>
+            <button type="button" class="preset-btn" onclick="setPlacedWidth(4.37, this)">4.37"</button>
+            <button type="button" class="preset-btn" onclick="setPlacedWidth(3.57, this)">3.57"</button>
+            <button type="button" class="preset-btn" onclick="setPlacedWidth(2.56, this)">2.56"</button>
+            <button type="button" class="preset-btn" onclick="setPlacedWidth(1.32, this)">1.32"</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Target DPI</label>
+          <input type="number" id="targetDpiInput" step="10" min="100" max="1200" value="300" oninput="recalcDPI()">
+        </div>
+
+        <!-- Effective DPI Live Badge -->
+        <div class="metric-display">
+          <div class="metric-header">
+            <span class="metric-header-title">Effective Print DPI</span>
+            <span id="statusBadge" class="badge red">-</span>
+          </div>
+          <div class="effective-dpi-val" id="effectiveDpiDisplay">0 <span style="font-size: 0.95rem; color: var(--text-muted); font-weight: 500;">DPI</span></div>
+          
+          <div class="stat-list">
+            <div class="stat-item">
+              <div class="stat-label">Source Pixels:</div>
+              <div class="stat-val" id="sourceDimDisplay">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Embedded DPI:</div>
+              <div class="stat-val" id="embeddedDpiDisplay">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Required Width:</div>
+              <div class="stat-val" id="requiredDimDisplay">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Upscale Factor:</div>
+              <div class="stat-val" id="upscaleFactorDisplay">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Warnings container -->
+        <div id="warningsContainer"></div>
+
+        <!-- Enhancement Settings -->
+        <div class="form-group">
+          <label>Enhancement Method</label>
+          <select id="methodSelect">
+            <option value="lanczos">Lanczos + light sharpen (Sharp diagrams)</option>
+            <option value="realesrgan" id="optRealEsrgan" style="display: none;">AI upscale (Real-ESRGAN)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Output Format</label>
+          <select id="formatSelect">
+            <option value="png">PNG (300 DPI metadata, lossless, alpha)</option>
+            <option value="jpeg" id="optJpeg">JPEG (Q95, no subsampling)</option>
+          </select>
+        </div>
+
+        <button class="btn" id="enhanceBtn" disabled onclick="enhanceCurrentImage()">
+          <span id="enhanceBtnText">Enhance to 300 DPI</span>
+          <div id="enhanceSpinner" class="spinner" style="display: none;"></div>
+        </button>
+
+        <button class="btn btn-secondary" id="downloadBtn" disabled onclick="downloadEnhancedImage()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download Enhanced Image
+        </button>
+
+        <p class="note-text">
+          * Note: Embedding the DPI tag configures physical placement scale in InDesign/LaTeX; upscaling interpolates pixels for target density.
+        </p>
+      </div>
+
+      <!-- Right Column: Visual Comparison & Zoom -->
+      <div class="card preview-container">
+        <div class="preview-toolbar">
+          <h2 class="card-title" style="margin-bottom: 0;">Side-by-Side Inspection</h2>
+          <div class="zoom-controls">
+            <button class="zoom-btn active" id="zoomFitBtn" onclick="setZoom('fit')">Fit</button>
+            <button class="zoom-btn" id="zoom100Btn" onclick="setZoom('100')">100%</button>
+            <button class="zoom-btn" id="zoom200Btn" onclick="setZoom('200')">200% Zoom</button>
+          </div>
+        </div>
+
+        <div class="view-comparison">
+          <!-- Before Preview -->
+          <div class="preview-box">
+            <div class="preview-box-header">
+              <span>Original Source</span>
+              <span id="beforeHeaderBadge" style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">-</span>
+            </div>
+            <div class="viewport" id="beforeViewport">
+              <div class="preview-empty" id="beforeEmpty">No image uploaded</div>
+              <img id="beforeImg" style="display: none;" alt="Original preview">
+            </div>
+            <div class="preview-box-footer">
+              <span id="beforeFooterDim">-</span>
+              <span id="beforeFooterDpi">-</span>
+            </div>
+          </div>
+
+          <!-- After Preview -->
+          <div class="preview-box">
+            <div class="preview-box-header">
+              <span style="color: var(--primary);">Enhanced Target</span>
+              <span id="afterHeaderBadge" style="font-size: 0.75rem; color: var(--primary); font-weight: normal;">-</span>
+            </div>
+            <div class="viewport" id="afterViewport">
+              <div class="preview-empty" id="afterEmpty">Enhance to view result</div>
+              <img id="afterImg" style="display: none;" alt="Enhanced preview">
+            </div>
+            <div class="preview-box-footer">
+              <span id="afterFooterDim">-</span>
+              <span id="afterFooterDpi">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. BATCH MODE VIEW -->
+    <div id="batchView" class="panel-view card">
+      <h2 class="card-title">Batch Processing for Book Figures</h2>
+      <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 18px;">
+        Process an entire chapter or book at once. Download a ZIP archive containing all figures enhanced with 300 DPI tags, plus a detailed <code>report.csv</code>.
+      </p>
+
+      <div class="drop-zone" id="batchDropZone" onclick="document.getElementById('batchFileInput').click()">
+        <svg viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <p><span class="highlight">Select multiple images</span> or drag them here</p>
+        <p style="font-size: 0.76rem; margin-top: 4px; color: var(--text-light);">Supports multiple PNG, JPG, WEBP, TIFF</p>
+        <input type="file" id="batchFileInput" class="file-input" multiple accept=".png,.jpg,.jpeg,.webp,.tiff,.tif">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;">
+        <div class="form-group">
+          <label>Default Placed Width (inches)</label>
+          <input type="number" id="batchPlacedWidth" step="0.01" value="4.88">
+        </div>
+        <div class="form-group">
+          <label>Target DPI</label>
+          <input type="number" id="batchTargetDpi" value="300">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Optional: CSV Widths File</label>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">
+          Import a CSV with columns <code>filename,placed_width_in</code> to customize placed widths per figure.
+        </p>
+        <input type="file" id="batchCsvInput" accept=".csv" style="font-size: 0.85rem; color: var(--text-body);">
+      </div>
+
+      <div class="file-queue" id="batchQueue" style="display: none;"></div>
+
+      <button class="btn" id="batchEnhanceBtn" disabled onclick="executeBatchEnhance()">
+        <span id="batchBtnText">Process Batch & Download ZIP</span>
+        <div id="batchSpinner" class="spinner" style="display: none;"></div>
+      </button>
+    </div>
+
+    <!-- 3. DOCX EXTRACT VIEW -->
+    <div id="docxView" class="panel-view card">
+      <h2 class="card-title">Extract Figures Directly from DOCX Book</h2>
+      <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 18px;">
+        Upload your book's manuscript. The extractor walks the entire document in true reading order, matches figures to their captions, and exports original, untouched images into numbered Part folders.
+      </p>
+
+      <!-- Dropzone for DOCX -->
+      <div class="drop-zone" id="docxDropZone" onclick="document.getElementById('docxFileInput').click()">
+        <svg viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <p><span class="highlight">Select .docx manuscript</span> or drag & drop</p>
+        <p style="font-size: 0.76rem; margin-top: 4px; color: var(--text-light);">Microsoft Word Document (.docx, up to 150 MB)</p>
+        <input type="file" id="docxFileInput" class="file-input" accept=".docx">
+      </div>
+
+      <!-- Controls row -->
+      <div style="display: flex; gap: 16px; margin-top: 16px; align-items: flex-end; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+          <label>Caption Position Search</label>
+          <select id="docxCaptionPosSelect" onchange="reAnalyzeDocx()">
+            <option value="auto" selected>Auto (checks below, then above)</option>
+            <option value="below">Below image only</option>
+            <option value="above">Above image only</option>
+          </select>
+        </div>
+        <div style="flex: 1; min-width: 220px;" id="selectedDocxNameDisplay">
+          <span style="font-size: 0.82rem; color: var(--text-muted);">No document analyzed yet</span>
+        </div>
+      </div>
+
+      <!-- Loading Indicator -->
+      <div id="docxLoading" style="display: none; padding: 24px; text-align: center; color: var(--primary);">
+        <div class="spinner spinner-dark" style="margin: 0 auto 10px auto; width: 22px; height: 22px;"></div>
+        <span style="font-size: 0.9rem; font-weight: 500;">Analyzing manuscript XML, walking figures & captions...</span>
+      </div>
+
+      <!-- Results Container -->
+      <div id="docxResultsContainer" style="display: none;">
+        <!-- Summary Stats Bar -->
+        <div class="docx-summary-bar">
+          <div class="summary-card">
+            <div class="label">Total Images</div>
+            <div class="value" id="docSumTotal">0</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Matched Figures</div>
+            <div class="value" id="docSumMatched" style="color: var(--green);">0</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Unmatched Images</div>
+            <div class="value" id="docSumUnmatched">0</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Duplicates</div>
+            <div class="value" id="docSumDuplicates">0</div>
+          </div>
+          <div class="summary-card">
+            <div class="label">Numbering Gaps</div>
+            <div class="value" id="docSumGaps">0</div>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="docx-filter-bar">
+          <div class="filter-item">
+            <label style="margin-bottom: 0;">Filter Part:</label>
+            <select id="partFilterSelect" style="width: auto; padding: 4px 8px; font-size: 0.82rem;" onchange="applyDocxFilters()">
+              <option value="all">All Parts</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label style="margin-bottom: 0; display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none;">
+              <input type="checkbox" id="filterLowDpi" onchange="applyDocxFilters()">
+              Only below 300 DPI
+            </label>
+          </div>
+          <div class="filter-item">
+            <label style="margin-bottom: 0; display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none;">
+              <input type="checkbox" id="filterWarnings" onchange="applyDocxFilters()">
+              Only with warnings
+            </label>
+          </div>
+        </div>
+
+        <!-- Grouped Parts Tables -->
+        <div id="docxPartsTablesContainer"></div>
+
+        <!-- Action Download Buttons -->
+        <div class="actions-bar">
+          <button class="btn" style="flex: 2; margin-top: 0;" id="docxDownloadBtn" onclick="downloadDocxZip()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span id="docxDownloadBtnText">Download original images (ZIP)</span>
+            <div id="docxDownloadSpinner" class="spinner" style="display: none;"></div>
+          </button>
+          
+          <button class="btn btn-secondary" style="flex: 1; margin-top: 0; width: auto;" onclick="toggleReportBox()">
+            Toggle Extraction Report
+          </button>
+        </div>
+        <p class="note-text" style="text-align: center; margin-top: 8px;">
+          * Files are the untouched originals from the .docx archive. No recompression, resizing, or quality loss.
+        </p>
+
+        <!-- Report Box -->
+        <div id="docxReportBox" class="report-box"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // State
+    let currentFile = null;
+    let currentImageMeta = null;
+    let enhancedBlob = null;
+    let enhancedFilename = "";
+    let currentZoom = "fit"; // 'fit', '100', '200'
+
+    // DOCX State
+    let currentDocxFile = null;
+    let currentDocxData = null;
+
+    // Initial check for Real-ESRGAN capabilities
+    async function checkCapabilities() {
+      try {
+        const res = await fetch("/api/capabilities");
+        if (res.ok) {
+          const cap = await res.json();
+          if (cap.realesrgan_available) {
+            const opt = document.getElementById("optRealEsrgan");
+            if (opt) opt.style.display = "block";
+          }
+        }
+      } catch (e) {
+        console.warn("Could not check server capabilities", e);
+      }
+    }
+    checkCapabilities();
+
+    // Tab switching
+    function switchTab(tab) {
+      const singleView = document.getElementById("singleView");
+      const batchView = document.getElementById("batchView");
+      const docxView = document.getElementById("docxView");
+
+      const tabSingle = document.getElementById("tabSingle");
+      const tabBatch = document.getElementById("tabBatch");
+      const tabDocx = document.getElementById("tabDocx");
+
+      // Hide all panels
+      singleView.style.display = "none";
+      batchView.classList.remove("active");
+      docxView.classList.remove("active");
+
+      tabSingle.classList.remove("active");
+      tabBatch.classList.remove("active");
+      tabDocx.classList.remove("active");
+
+      if (tab === "single") {
+        singleView.style.display = "grid";
+        tabSingle.classList.add("active");
+      } else if (tab === "batch") {
+        batchView.classList.add("active");
+        tabBatch.classList.add("active");
+      } else if (tab === "docx") {
+        docxView.classList.add("active");
+        tabDocx.classList.add("active");
+      }
+    }
+
+    // ==========================================
+    // Single Image Tab Handlers
+    // ==========================================
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+
+    ["dragenter", "dragover"].forEach(evt => {
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+    });
+
+    ["dragleave", "drop"].forEach(evt => {
+      dropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+      });
+    });
+
+    dropZone.addEventListener("drop", e => {
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", e => {
+      if (e.target.files && e.target.files[0]) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+
+    function setPlacedWidth(val, btn) {
+      document.getElementById("placedWidthInput").value = val;
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      recalcDPI();
+    }
+
+    async function handleFileSelect(file) {
+      if (!file) return;
+      if (file.size > 25 * 1024 * 1024) {
+        alert("File size exceeds 25 MB limit.");
+        return;
+      }
+
+      currentFile = file;
+      enhancedBlob = null;
+      document.getElementById("downloadBtn").disabled = true;
+      document.getElementById("afterEmpty").style.display = "block";
+      document.getElementById("afterEmpty").textContent = "Enhance to view result";
+      document.getElementById("afterImg").style.display = "none";
+      document.getElementById("afterHeaderBadge").textContent = "-";
+      document.getElementById("afterFooterDim").textContent = "-";
+      document.getElementById("afterFooterDpi").textContent = "-";
+
+      // Show local preview immediately
+      const reader = new FileReader();
+      reader.onload = e => {
+        const beforeImg = document.getElementById("beforeImg");
+        beforeImg.src = e.target.result;
+        beforeImg.style.display = "block";
+        document.getElementById("beforeEmpty").style.display = "none";
+      };
+      reader.readAsDataURL(file);
+
+      // Call /api/analyze
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const resp = await fetch("/api/analyze", { method: "POST", body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: "Invalid image" }));
+          alert(`Analysis failed: ${err.detail || "Invalid image"}`);
+          return;
+        }
+
+        currentImageMeta = await resp.json();
+        
+        // Show/hide Real-ESRGAN option based on detection
+        if (currentImageMeta.realesrgan_available) {
+          document.getElementById("optRealEsrgan").style.display = "block";
+        }
+
+        // Handle alpha: if transparency exists, disable JPEG option
+        const optJpeg = document.getElementById("optJpeg");
+        if (currentImageMeta.has_alpha) {
+          optJpeg.disabled = true;
+          document.getElementById("formatSelect").value = "png";
+        } else {
+          optJpeg.disabled = false;
+        }
+
+        document.getElementById("enhanceBtn").disabled = false;
+        recalcDPI();
+      } catch (err) {
+        console.error("Analysis error:", err);
+        alert("Network or server error analyzing image.");
+      }
+    }
+
+    function recalcDPI() {
+      if (!currentImageMeta) return;
+
+      const placedWidth = parseFloat(document.getElementById("placedWidthInput").value) || 4.88;
+      const targetDPI = parseInt(document.getElementById("targetDpiInput").value) || 300;
+
+      const effectiveDPI = Math.round(currentImageMeta.width / placedWidth);
+      const requiredWidth = Math.ceil(placedWidth * targetDPI);
+      const upscaleFactor = (requiredWidth / currentImageMeta.width).toFixed(2);
+
+      // Update badge
+      const badge = document.getElementById("statusBadge");
+      badge.className = "badge";
+      if (effectiveDPI >= 300) {
+        badge.classList.add("green");
+        badge.textContent = "OK";
+      } else if (effectiveDPI >= 200) {
+        badge.classList.add("amber");
+        badge.textContent = "Re-export to 300 DPI";
+      } else {
+        badge.classList.add("red");
+        badge.textContent = "Will print soft";
+      }
+
+      // Update values
+      document.getElementById("effectiveDpiDisplay").innerHTML = `${effectiveDPI} <span style="font-size: 0.95rem; color: var(--text-muted); font-weight: 500;">DPI</span>`;
+      document.getElementById("sourceDimDisplay").textContent = `${currentImageMeta.width} × ${currentImageMeta.height} px`;
+      document.getElementById("embeddedDpiDisplay").textContent = currentImageMeta.embedded_dpi ? `${currentImageMeta.embedded_dpi[0]} DPI` : "none";
+      document.getElementById("requiredDimDisplay").textContent = `${requiredWidth} px (min)`;
+      document.getElementById("upscaleFactorDisplay").textContent = upscaleFactor <= 1.0 ? "None (1.0×)" : `${upscaleFactor}×`;
+
+      // Update Left Preview footer
+      document.getElementById("beforeHeaderBadge").textContent = `${currentImageMeta.format} (${currentImageMeta.mode})`;
+      document.getElementById("beforeFooterDim").textContent = `${currentImageMeta.width} × ${currentImageMeta.height} px`;
+      document.getElementById("beforeFooterDpi").textContent = `Effective: ${effectiveDPI} DPI`;
+
+      // Update Warnings
+      const warningsContainer = document.getElementById("warningsContainer");
+      warningsContainer.innerHTML = "";
+
+      const factorNum = parseFloat(upscaleFactor);
+      if (factorNum > 4.0) {
+        warningsContainer.innerHTML += `
+          <div class="alert warning">
+            <span class="alert-icon">⚠️</span>
+            <div><strong>Extreme upscale (${upscaleFactor}×):</strong> Source is too small to recover reliably. Re-export from source.</div>
+          </div>
+        `;
+      } else if (factorNum > 2.0) {
+        warningsContainer.innerHTML += `
+          <div class="alert warning">
+            <span class="alert-icon">⚠️</span>
+            <div><strong>Notice (${upscaleFactor}×):</strong> Upscaling adds pixels, not detail. For best print quality, re-export from the original source (SVG/PDF/vector or a higher-res export).</div>
+          </div>
+        `;
+      }
+
+      if (currentImageMeta.is_diagram_heuristic) {
+        warningsContainer.innerHTML += `
+          <div class="alert info">
+            <span class="alert-icon">ℹ️</span>
+            <div><strong>Diagram / text detected:</strong> AI upscalers can distort small text. Compare before/after at 200% zoom before using it.</div>
+          </div>
+        `;
+      }
+    }
+
+    async function enhanceCurrentImage() {
+      if (!currentFile || !currentImageMeta) return;
+
+      const enhanceBtn = document.getElementById("enhanceBtn");
+      const btnText = document.getElementById("enhanceBtnText");
+      const spinner = document.getElementById("enhanceSpinner");
+
+      const placedWidth = parseFloat(document.getElementById("placedWidthInput").value) || 4.88;
+      const targetDPI = parseInt(document.getElementById("targetDpiInput").value) || 300;
+      const method = document.getElementById("methodSelect").value;
+      const format = document.getElementById("formatSelect").value;
+
+      enhanceBtn.disabled = true;
+      btnText.textContent = "Enhancing...";
+      spinner.style.display = "block";
+
+      const formData = new FormData();
+      formData.append("file", currentFile);
+      formData.append("placed_width_in", placedWidth);
+      formData.append("target_dpi", targetDPI);
+      formData.append("method", method);
+      formData.append("output_format", format);
+
+      try {
+        const resp = await fetch("/api/enhance", { method: "POST", body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: "Unknown error" }));
+          alert(`Enhancement failed: ${err.detail}`);
+          return;
+        }
+
+        const outBlob = await resp.blob();
+        enhancedBlob = outBlob;
+
+        // Extract metadata from response headers
+        const outWidth = resp.headers.get("X-Enhanced-Width") || "-";
+        const outHeight = resp.headers.get("X-Enhanced-Height") || "-";
+        const effDpi = resp.headers.get("X-Effective-DPI") || targetDPI;
+        const warning = resp.headers.get("X-Warning");
+
+        if (warning) {
+          alert(`Note: ${warning}`);
+        }
+
+        // Get suggested filename from Content-Disposition header
+        const disposition = resp.headers.get("Content-Disposition");
+        enhancedFilename = `${currentFile.name.replace(/\.[^/.]+$/, "")}_${targetDPI}dpi.${format}`;
+        if (disposition && disposition.indexOf("filename=") !== -1) {
+          const match = disposition.match(/filename="?([^"]+)"?/);
+          if (match && match[1]) enhancedFilename = match[1];
+        }
+
+        // Display after image
+        const afterImg = document.getElementById("afterImg");
+        afterImg.src = URL.createObjectURL(outBlob);
+        afterImg.style.display = "block";
+        document.getElementById("afterEmpty").style.display = "none";
+
+        document.getElementById("afterHeaderBadge").textContent = "300 DPI Ready";
+        document.getElementById("afterFooterDim").textContent = `${outWidth} × ${outHeight} px`;
+        document.getElementById("afterFooterDpi").textContent = `Effective: ${effDpi} DPI`;
+
+        document.getElementById("downloadBtn").disabled = false;
+      } catch (err) {
+        console.error("Enhance error:", err);
+        alert("Enhancement failed due to network or server error.");
+      } finally {
+        enhanceBtn.disabled = false;
+        btnText.textContent = `Enhance to ${targetDPI} DPI`;
+        spinner.style.display = "none";
+      }
+    }
+
+    function downloadEnhancedImage() {
+      if (!enhancedBlob) return;
+      const url = URL.createObjectURL(enhancedBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = enhancedFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function setZoom(level) {
+      currentZoom = level;
+      document.querySelectorAll(".zoom-btn").forEach(b => b.classList.remove("active"));
+      if (level === "fit") document.getElementById("zoomFitBtn").classList.add("active");
+      if (level === "100") document.getElementById("zoom100Btn").classList.add("active");
+      if (level === "200") document.getElementById("zoom200Btn").classList.add("active");
+
+      const beforeImg = document.getElementById("beforeImg");
+      const afterImg = document.getElementById("afterImg");
+
+      [beforeImg, afterImg].forEach(img => {
+        img.classList.remove("zoom-100", "zoom-200");
+        if (level === "100") img.classList.add("zoom-100");
+        if (level === "200") img.classList.add("zoom-200");
+      });
+    }
+
+    // ==========================================
+    // Batch Mode Handlers
+    // ==========================================
+    let batchFiles = [];
+    const batchFileInput = document.getElementById("batchFileInput");
+    const batchDropZone = document.getElementById("batchDropZone");
+
+    ["dragenter", "dragover"].forEach(evt => {
+      batchDropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        batchDropZone.classList.add("dragover");
+      });
+    });
+
+    ["dragleave", "drop"].forEach(evt => {
+      batchDropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        batchDropZone.classList.remove("dragover");
+      });
+    });
+
+    batchDropZone.addEventListener("drop", e => {
+      if (e.dataTransfer.files) {
+        handleBatchFiles(Array.from(e.dataTransfer.files));
+      }
+    });
+
+    batchFileInput.addEventListener("change", e => {
+      if (e.target.files) {
+        handleBatchFiles(Array.from(e.target.files));
+      }
+    });
+
+    function handleBatchFiles(files) {
+      batchFiles = files.filter(f => f.type.startsWith("image/") || /\.(png|jpe?g|webp|tiff?)$/i.test(f.name));
+      const queue = document.getElementById("batchQueue");
+      queue.innerHTML = "";
+      if (batchFiles.length > 0) {
+        queue.style.display = "block";
+        batchFiles.forEach(f => {
+          const item = document.createElement("div");
+          item.className = "queue-item";
+          item.innerHTML = `<span>${f.name}</span><span style="color: var(--text-muted);">${(f.size / (1024 * 1024)).toFixed(2)} MB</span>`;
+          queue.appendChild(item);
+        });
+        document.getElementById("batchEnhanceBtn").disabled = false;
+        document.getElementById("batchBtnText").textContent = `Process ${batchFiles.length} Images & Download ZIP`;
+      } else {
+        queue.style.display = "none";
+        document.getElementById("batchEnhanceBtn").disabled = true;
+      }
+    }
+
+    async function executeBatchEnhance() {
+      if (batchFiles.length === 0) return;
+
+      const btn = document.getElementById("batchEnhanceBtn");
+      const btnText = document.getElementById("batchBtnText");
+      const spinner = document.getElementById("batchSpinner");
+
+      btn.disabled = true;
+      btnText.textContent = "Processing batch...";
+      spinner.style.display = "block";
+
+      const formData = new FormData();
+      batchFiles.forEach(f => formData.append("files", f));
+      formData.append("placed_width_in", document.getElementById("batchPlacedWidth").value || 4.88);
+      formData.append("target_dpi", document.getElementById("batchTargetDpi").value || 300);
+      formData.append("method", document.getElementById("methodSelect").value || "lanczos");
+      formData.append("output_format", "png");
+
+      const csvInput = document.getElementById("batchCsvInput");
+      if (csvInput.files && csvInput.files[0]) {
+        formData.append("csv_widths", csvInput.files[0]);
+      }
+
+      try {
+        const resp = await fetch("/api/batch-enhance", { method: "POST", body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: "Batch error" }));
+          alert(`Batch enhancement failed: ${err.detail}`);
+          return;
+        }
+
+        const zipBlob = await resp.blob();
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "enhanced_figures_300dpi.zip";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("Batch error:", err);
+        alert("Batch processing encountered a network or server error.");
+      } finally {
+        btn.disabled = false;
+        btnText.textContent = `Process ${batchFiles.length} Images & Download ZIP`;
+        spinner.style.display = "none";
+      }
+    }
+
+    // ==========================================
+    // DOCX Extract Tab Handlers
+    // ==========================================
+    const docxDropZone = document.getElementById("docxDropZone");
+    const docxFileInput = document.getElementById("docxFileInput");
+
+    ["dragenter", "dragover"].forEach(evt => {
+      docxDropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        docxDropZone.classList.add("dragover");
+      });
+    });
+
+    ["dragleave", "drop"].forEach(evt => {
+      docxDropZone.addEventListener(evt, e => {
+        e.preventDefault();
+        docxDropZone.classList.remove("dragover");
+      });
+    });
+
+    docxDropZone.addEventListener("drop", e => {
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleDocxFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    docxFileInput.addEventListener("change", e => {
+      if (e.target.files && e.target.files[0]) {
+        handleDocxFile(e.target.files[0]);
+      }
+    });
+
+    async function handleDocxFile(file) {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".docx")) {
+        alert("Please select a valid .docx file.");
+        return;
+      }
+      if (file.size > 150 * 1024 * 1024) {
+        alert("DOCX file exceeds 150 MB limit.");
+        return;
+      }
+
+      currentDocxFile = file;
+      document.getElementById("selectedDocxNameDisplay").innerHTML = `
+        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">${file.name}</span>
+        <span style="font-size: 0.78rem; color: var(--text-muted);">(${(file.size / (1024 * 1024)).toFixed(1)} MB)</span>
+      `;
+
+      await analyzeDocx();
+    }
+
+    async function reAnalyzeDocx() {
+      if (currentDocxFile) {
+        await analyzeDocx();
+      }
+    }
+
+    async function analyzeDocx() {
+      if (!currentDocxFile) return;
+
+      const loading = document.getElementById("docxLoading");
+      const resultsContainer = document.getElementById("docxResultsContainer");
+      const captionPos = document.getElementById("docxCaptionPosSelect").value;
+
+      loading.style.display = "block";
+      resultsContainer.style.display = "none";
+
+      const formData = new FormData();
+      formData.append("file", currentDocxFile);
+      formData.append("caption_position", captionPos);
+
+      try {
+        const resp = await fetch("/api/docx/analyze", { method: "POST", body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: "Failed to parse document" }));
+          alert(`Analysis error: ${err.detail}`);
+          return;
+        }
+
+        currentDocxData = await resp.json();
+        renderDocxResults(currentDocxData);
+      } catch (err) {
+        console.error("DOCX analysis error:", err);
+        alert("Failed to analyze DOCX manuscript due to network or server error.");
+      } finally {
+        loading.style.display = "none";
+      }
+    }
+
+    function renderDocxResults(data) {
+      const container = document.getElementById("docxResultsContainer");
+      container.style.display = "block";
+
+      // 1. Summary Bar
+      document.getElementById("docSumTotal").textContent = data.summary.total_images;
+      document.getElementById("docSumMatched").textContent = data.summary.matched;
+      document.getElementById("docSumUnmatched").textContent = data.summary.unmatched;
+      document.getElementById("docSumDuplicates").textContent = data.summary.duplicates;
+      document.getElementById("docSumGaps").textContent = data.summary.gaps;
+
+      // 2. Populate Part Filter
+      const partFilter = document.getElementById("partFilterSelect");
+      partFilter.innerHTML = '<option value="all">All Parts</option>';
+      Object.keys(data.parts).sort((a,b) => parseInt(a) - parseInt(b)).forEach(pk => {
+        partFilter.innerHTML += `<option value="${pk}">Part ${pk} (${data.parts[pk].length})</option>`;
+      });
+      if (data.unmatched.length > 0) {
+        partFilter.innerHTML += `<option value="unmatched">Unmatched Images (${data.unmatched.length})</option>`;
+      }
+
+      // 3. Render Tables
+      renderDocxTables();
+
+      // 4. Populate Report Box
+      document.getElementById("docxReportBox").textContent = data.report_text || "No report generated.";
+    }
+
+    function renderDocxTables() {
+      if (!currentDocxData) return;
+      const tablesContainer = document.getElementById("docxPartsTablesContainer");
+      tablesContainer.innerHTML = "";
+
+      const selectedPart = document.getElementById("partFilterSelect").value;
+      const onlyLowDpi = document.getElementById("filterLowDpi").checked;
+      const onlyWarnings = document.getElementById("filterWarnings").checked;
+
+      let renderedAny = false;
+
+      // Render Parts
+      const partKeys = Object.keys(currentDocxData.parts).sort((a,b) => parseInt(a) - parseInt(b));
+      partKeys.forEach(pk => {
+        if (selectedPart !== "all" && selectedPart !== pk) return;
+
+        const figs = currentDocxData.parts[pk].filter(f => {
+          if (onlyLowDpi && f.effective_dpi && f.effective_dpi >= 300) return false;
+          if (onlyWarnings && f.warnings.length === 0) return false;
+          return true;
+        });
+
+        if (figs.length === 0 && (onlyLowDpi || onlyWarnings)) return;
+
+        renderedAny = true;
+        const partSection = document.createElement("div");
+        partSection.className = "part-section";
+
+        let rowsHtml = "";
+        figs.forEach(f => {
+          const badgeClass = f.print_status === "OK" || f.print_status.includes("Vector") ? "green" : (f.print_status.includes("Re-export") ? "amber" : "red");
+          const thumbHtml = f.thumbnail 
+            ? `<img src="${f.thumbnail}" class="thumb-img" alt="Thumb">` 
+            : `<span style="font-size: 0.72rem; color: var(--text-light);">${f.extension}</span>`;
+          
+          const warnText = f.warnings.length > 0 
+            ? `<span style="color: var(--amber); font-size: 0.76rem;" title="${f.warnings.join('; ')}">⚠️ ${f.warnings.join('; ')}</span>` 
+            : `<span style="color: var(--text-light);">-</span>`;
+
+          rowsHtml += `
+            <tr>
+              <td class="thumb-cell">${thumbHtml}</td>
+              <td style="font-weight: 700; color: var(--text-main); white-space: nowrap;">Fig ${f.figure_number}</td>
+              <td class="caption-cell" title="${escapeHtml(f.caption_text)}">${escapeHtml(f.caption_text || "-")}</td>
+              <td style="white-space: nowrap;">${f.placed_width_in}"</td>
+              <td style="white-space: nowrap;">${f.pixels_str}</td>
+              <td style="white-space: nowrap; font-weight: 600;">${f.effective_dpi ? f.effective_dpi + " DPI" : (f.pixels_str.includes("Vector") ? "Vector" : "-")}</td>
+              <td><span class="badge ${badgeClass}">${f.print_status}</span></td>
+              <td>${warnText}</td>
+              <td>
+                <button class="btn btn-secondary btn-sm" onclick='sendFigureToEnhancer(${JSON.stringify(f).replace(/'/g, "&apos;")})'>
+                  Enhance
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+
+        partSection.innerHTML = `
+          <div class="part-header" onclick="togglePartCollapse(this)">
+            <span>Part ${pk} <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">(${figs.length} figures)</span></span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">▼</span>
+          </div>
+          <div class="part-body">
+            <table class="part-table">
+              <thead>
+                <tr>
+                  <th class="thumb-cell">Image</th>
+                  <th>Fig #</th>
+                  <th>Caption</th>
+                  <th>Placed</th>
+                  <th>Pixels</th>
+                  <th>DPI</th>
+                  <th>Status</th>
+                  <th>Warnings</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml || '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 16px;">No figures match current filters.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        tablesContainer.appendChild(partSection);
+      });
+
+      // Render Unmatched section
+      if (currentDocxData.unmatched.length > 0 && (selectedPart === "all" || selectedPart === "unmatched")) {
+        const unfigs = currentDocxData.unmatched.filter(u => {
+          if (onlyLowDpi && u.effective_dpi && u.effective_dpi >= 300) return false;
+          if (onlyWarnings && u.warnings.length === 0) return false;
+          return true;
+        });
+
+        if (unfigs.length > 0 || (!onlyLowDpi && !onlyWarnings)) {
+          renderedAny = true;
+          const unSection = document.createElement("div");
+          unSection.className = "part-section";
+
+          let unRowsHtml = "";
+          unfigs.forEach(u => {
+            const badgeClass = u.print_status === "OK" || u.print_status.includes("Vector") ? "green" : (u.print_status.includes("Re-export") ? "amber" : "red");
+            const thumbHtml = u.thumbnail 
+              ? `<img src="${u.thumbnail}" class="thumb-img" alt="Thumb">` 
+              : `<span style="font-size: 0.72rem; color: var(--text-light);">${u.extension}</span>`;
+
+            unRowsHtml += `
+              <tr>
+                <td class="thumb-cell">${thumbHtml}</td>
+                <td style="font-weight: 600; color: var(--text-muted);">Doc #${u.doc_index}</td>
+                <td style="color: var(--text-light); font-style: italic;">(No caption matched)</td>
+                <td>${u.placed_width_in}"</td>
+                <td>${u.pixels_str}</td>
+                <td style="font-weight: 600;">${u.effective_dpi ? u.effective_dpi + " DPI" : (u.pixels_str.includes("Vector") ? "Vector" : "-")}</td>
+                <td><span class="badge ${badgeClass}">${u.print_status}</span></td>
+                <td><span style="color: var(--text-muted); font-size: 0.76rem;">Saved to _unmatched/</span></td>
+                <td>
+                  <button class="btn btn-secondary btn-sm" onclick='sendFigureToEnhancer(${JSON.stringify(u).replace(/'/g, "&apos;")})'>
+                    Enhance
+                  </button>
+                </td>
+              </tr>
+            `;
+          });
+
+          unSection.innerHTML = `
+            <div class="part-header" onclick="togglePartCollapse(this)">
+              <span>Unmatched Figures <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">(${unfigs.length} images)</span></span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">▼</span>
+            </div>
+            <div class="part-body">
+              <table class="part-table">
+                <thead>
+                  <tr>
+                    <th class="thumb-cell">Image</th>
+                    <th>Doc #</th>
+                    <th>Caption</th>
+                    <th>Placed</th>
+                    <th>Pixels</th>
+                    <th>DPI</th>
+                    <th>Status</th>
+                    <th>Destination</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${unRowsHtml}
+                </tbody>
+              </table>
+            </div>
+          `;
+          tablesContainer.appendChild(unSection);
+        }
+      }
+
+      if (!renderedAny) {
+        tablesContainer.innerHTML = '<div style="text-align: center; padding: 32px; color: var(--text-muted);">No figures found matching selected filter criteria.</div>';
+      }
+    }
+
+    function applyDocxFilters() {
+      renderDocxTables();
+    }
+
+    function togglePartCollapse(header) {
+      const body = header.nextElementSibling;
+      const arrow = header.querySelector("span:last-child");
+      if (body.style.display === "none") {
+        body.style.display = "block";
+        arrow.textContent = "▼";
+      } else {
+        body.style.display = "none";
+        arrow.textContent = "▶";
+      }
+    }
+
+    function toggleReportBox() {
+      const box = document.getElementById("docxReportBox");
+      box.style.display = box.style.display === "block" ? "none" : "block";
+    }
+
+    async function downloadDocxZip() {
+      if (!currentDocxFile) return;
+
+      const btn = document.getElementById("docxDownloadBtn");
+      const btnText = document.getElementById("docxDownloadBtnText");
+      const spinner = document.getElementById("docxDownloadSpinner");
+      const captionPos = document.getElementById("docxCaptionPosSelect").value;
+
+      btn.disabled = true;
+      btnText.textContent = "Building ZIP (storing untouched bytes)...";
+      spinner.style.display = "block";
+
+      const formData = new FormData();
+      formData.append("file", currentDocxFile);
+      formData.append("caption_position", captionPos);
+
+      try {
+        const resp = await fetch("/api/docx/extract", { method: "POST", body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: "Extraction failed" }));
+          alert(`Download failed: ${err.detail}`);
+          return;
+        }
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const stem = currentDocxFile.name.replace(/\.[^/.]+$/, "");
+        a.download = `${stem}_figures.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error("ZIP download error:", err);
+        alert("Extraction failed due to network or server error.");
+      } finally {
+        btn.disabled = false;
+        btnText.textContent = "Download original images (ZIP)";
+        spinner.style.display = "none";
+      }
+    }
+
+    async function sendFigureToEnhancer(figureItem) {
+      if (!currentDocxFile) return;
+
+      // Extract the single media file from the docx via backend
+      const formData = new FormData();
+      formData.append("file", currentDocxFile);
+      formData.append("media_path", figureItem.original_media_file);
+
+      try {
+        const resp = await fetch("/api/docx/extract-single", { method: "POST", body: formData });
+        if (!resp.ok) {
+          alert("Could not load image from DOCX.");
+          return;
+        }
+
+        const blob = await resp.blob();
+        const file = new File([blob], figureItem.media_filename, { type: blob.type });
+
+        // Set placed width from the docx
+        const placedWidthVal = figureItem.placed_width_in || 4.88;
+        setPlacedWidth(placedWidthVal);
+
+        // Preload file into Single Image tab
+        await handleFileSelect(file);
+
+        // Switch to Single Image tab
+        switchTab("single");
+      } catch (err) {
+        console.error("Send to enhancer error:", err);
+        alert("Failed to send figure to Enhancer.");
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return "";
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
